@@ -2,6 +2,7 @@ from datetime import datetime
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .auth import create_access_token, get_current_user, hash_password, verify_password
@@ -127,9 +128,34 @@ def _refresh_company(company: Company, db: Session) -> Company:
     return company
 
 
+def _ensure_sqlite_schema_compatibility() -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    expected_columns: dict[str, dict[str, str]] = {
+        "users": {
+            "theme_preference": "ALTER TABLE users ADD COLUMN theme_preference VARCHAR(5) DEFAULT 'dark'",
+        },
+        "accounts": {
+            "bank_name": "ALTER TABLE accounts ADD COLUMN bank_name VARCHAR(255) DEFAULT 'Primary Account'",
+        },
+    }
+
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        for table_name, column_ddls in expected_columns.items():
+            if not inspector.has_table(table_name):
+                continue
+            existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
+            for column_name, ddl in column_ddls.items():
+                if column_name not in existing_columns:
+                    connection.execute(text(ddl))
+
+
 @app.on_event("startup")
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
+    _ensure_sqlite_schema_compatibility()
     ensure_uploads_dir()
 
 

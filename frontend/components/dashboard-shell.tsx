@@ -93,6 +93,18 @@ export function DashboardShell() {
   }
 
   async function handleAuth(kind: AuthMode) {
+    if (kind === "register") {
+      if (!companyName.trim()) {
+        setStatus("Enter a company name before creating an account.");
+        return;
+      }
+      const parsedBalance = Number(openingCashBalance || "0");
+      if (Number.isNaN(parsedBalance) || parsedBalance < 0) {
+        setStatus("Enter a valid non-negative opening cash balance.");
+        return;
+      }
+    }
+
     setLoading(true);
     setEmailDraft(null);
     setOptimizerResult(null);
