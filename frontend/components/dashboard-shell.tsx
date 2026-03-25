@@ -71,7 +71,7 @@ export function DashboardShell() {
     if (!dashboard) {
       return "The engine starts with financial context before it decides what to pay.";
     }
-    return `${dashboard.company.company_name} has ${dashboard.company.runway_days} days of runway and ${dashboard.company.coverage_ratio}x bill coverage.`;
+    return `${dashboard.company.company_name} is being evaluated against current cash flow, upcoming bills, and risk mode.`;
   }, [dashboard]);
 
   function formatCurrency(amount: number) {
@@ -442,8 +442,6 @@ export function DashboardShell() {
           <div className="grid gap-4 md:grid-cols-4">
             {dashboard &&
               [
-                ["Runway", `${dashboard.company.runway_days} days`],
-                ["Coverage", `${dashboard.company.coverage_ratio}x`],
                 ["Balance", formatCurrency(dashboard.company.cash_balance)],
                 ["Cash Flow", formatCurrency(dashboard.company.cash_flow)],
                 ["Bills", formatCurrency(dashboard.company.upcoming_bills_total)]
