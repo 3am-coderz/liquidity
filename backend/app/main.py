@@ -82,6 +82,7 @@ def _serialize_payable(payable: Payable) -> PayableOut:
         score=None,
         is_hard_constraint=None,
         survival_impact=None,
+        affordability_warning=None,
     )
 
 
@@ -103,6 +104,7 @@ def _serialize_scored_bill(scored_bill: ScoredBill) -> PayableOut:
         score=scored_bill.score,
         is_hard_constraint=scored_bill.is_hard_constraint,
         survival_impact=scored_bill.survival_impact,
+        affordability_warning=scored_bill.affordability_warning,
     )
 
 
@@ -524,6 +526,7 @@ def run_optimizer(current_user: User = Depends(get_current_user), db: Session = 
         selected_bills=[_serialize_scored_bill(item) for item in result.selected_bills],
         delayed_bills=[_serialize_scored_bill(item) for item in result.delayed_bills],
         explanation=result.explanation,
+        critical_shortfall=result.critical_shortfall,
     )
 
 

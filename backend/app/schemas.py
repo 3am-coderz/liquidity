@@ -74,6 +74,7 @@ class PayableOut(BaseModel):
     score: float | None = None
     is_hard_constraint: bool | None = None
     survival_impact: float | None = None
+    affordability_warning: bool | None = None
 
 
 class OCRParseSummary(BaseModel):
@@ -104,6 +105,7 @@ class OptimizerDecisionResponse(BaseModel):
     selected_bills: list[PayableOut]
     delayed_bills: list[PayableOut]
     explanation: str
+    critical_shortfall: bool = False
 
 
 class ConfirmPaymentsRequest(BaseModel):

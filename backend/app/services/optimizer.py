@@ -3,6 +3,11 @@ from enum import Enum
 
 from ..models import Payable, RiskCategory
 
+MAX_PRIORITY_SCORE = 100.0
+HARD_EXISTENTIAL_SCORE = 100.0
+HARD_LEGAL_SCORE = 95.0
+MAX_SOFT_PRIORITY_SCORE = 89.0
+
 
 class ConstraintType(Enum):
     HARD_EXISTENTIAL = "HARD_EXISTENTIAL"
@@ -13,6 +18,7 @@ class ConstraintType(Enum):
 class BillType(Enum):
     PAYROLL = "PAYROLL"
     OPERATING = "OPERATING"
+    FACILITIES = "FACILITIES"
 
 
 @dataclass
@@ -22,6 +28,7 @@ class ScoredBill:
     is_hard_constraint: bool = False
     survival_impact: float = 0.0
     constraint_type: ConstraintType = ConstraintType.SOFT_OPTIMIZATION
+    affordability_warning: bool = False
 
 
 @dataclass
@@ -32,6 +39,7 @@ class OptimizationResult:
     total_selected_amount: float
     projected_runway_days: float
     explanation: str
+    critical_shortfall: bool = False
 
 
 @dataclass
@@ -51,17 +59,19 @@ def _normalized(value: float | None, fallback: float = 0.0) -> float:
 def _bill_type(bill: Payable) -> BillType:
     if bill.payroll_date or bill.category == "Payroll":
         return BillType.PAYROLL
+    if bill.category in {"Rent", "Facilities", "Utilities"}:
+        return BillType.FACILITIES
     return BillType.OPERATING
 
 
 def _is_critical_path(bill: Payable) -> bool:
-    return bill.is_critical or bill.blocks_revenue or bill.category in {"Payroll", "Legal", "Inventory", "Utilities"}
+    return bill.is_critical or bill.blocks_revenue or bill.category in {"Payroll", "Legal", "Inventory", "Utilities", "Facilities", "Rent"}
 
 
 def calculate_solvency_score(bill: Payable, runway_days: float, cash_reserve_ratio: float) -> SolvencyScore:
-    if _is_critical_path(bill):
+    if _is_critical_path(bill) and bill.blocks_revenue:
         return SolvencyScore(
-            priority_value=10000.0,
+            priority_value=HARD_EXISTENTIAL_SCORE,
             is_hard_constraint=True,
             survival_impact=1.0,
             constraint_type=ConstraintType.HARD_EXISTENTIAL,
@@ -69,16 +79,36 @@ def calculate_solvency_score(bill: Payable, runway_days: float, cash_reserve_rat
 
     if _bill_type(bill) == BillType.PAYROLL and bill.days_overdue >= 3:
         return SolvencyScore(
-            priority_value=9000.0,
+            priority_value=HARD_LEGAL_SCORE,
             is_hard_constraint=True,
-            survival_impact=0.9,
+            survival_impact=0.95,
             constraint_type=ConstraintType.HARD_LEGAL,
         )
+
+    if _bill_type(bill) == BillType.FACILITIES:
+        if bill.days_overdue >= 60:
+            return SolvencyScore(
+                priority_value=90.0,
+                is_hard_constraint=True,
+                survival_impact=0.9,
+                constraint_type=ConstraintType.HARD_LEGAL,
+            )
+        if bill.days_overdue >= 30:
+            return SolvencyScore(
+                priority_value=70.0,
+                is_hard_constraint=False,
+                survival_impact=0.7,
+                constraint_type=ConstraintType.SOFT_OPTIMIZATION,
+            )
 
     if runway_days < 7:
         w_penalty = 0.5
         w_trust = 0.1
         w_revenue = 0.4
+    elif runway_days < 30:
+        w_penalty = 0.4
+        w_trust = 0.2
+        w_revenue = 0.3
     else:
         w_penalty = 0.3
         w_trust = 0.3
@@ -97,31 +127,32 @@ def calculate_solvency_score(bill: Payable, runway_days: float, cash_reserve_rat
     trust_score = _normalized(bill.trust_score, 0.45) * max(0.0, 1.0 - (bill.days_overdue * 0.05))
     revenue_impact = _normalized(bill.revenue_impact, 0.35) * (1.0 if bill.blocks_revenue else 0.5)
     criticality = _normalized(bill.criticality, 0.3) * 0.1
-    reserve_pressure = 1.0 if cash_reserve_ratio < 1 else 0.0
+    reserve_pressure = 1.0 if cash_reserve_ratio < 1.0 else 0.0
 
     soft_value = (
         (penalty_score * w_penalty) +
         (trust_score * w_trust) +
         (revenue_impact * w_revenue) +
         criticality +
-        reserve_pressure * 0.1
+        reserve_pressure * 0.2
     )
     survival_impact = max(0.0, min(1.0, soft_value))
     return SolvencyScore(
-        priority_value=min(soft_value * 100, 5000),
+        priority_value=min(soft_value * MAX_PRIORITY_SCORE, MAX_SOFT_PRIORITY_SCORE),
         is_hard_constraint=False,
         survival_impact=survival_impact,
         constraint_type=ConstraintType.SOFT_OPTIMIZATION,
     )
 
 
-def _to_scored_bill(bill: Payable, solvency_score: SolvencyScore) -> ScoredBill:
+def _to_scored_bill(bill: Payable, solvency_score: SolvencyScore, affordability_warning: bool = False) -> ScoredBill:
     return ScoredBill(
         bill=bill,
         score=round(solvency_score.priority_value, 3),
         is_hard_constraint=solvency_score.is_hard_constraint,
         survival_impact=round(solvency_score.survival_impact, 3),
         constraint_type=solvency_score.constraint_type,
+        affordability_warning=affordability_warning,
     )
 
 
@@ -132,8 +163,8 @@ def solve_payment_strategy(
     monthly_expenses: float,
     cash_floor: float = 2000,
 ) -> OptimizationResult:
-    available_cash = max(cash - cash_floor, 0)
-    daily_expense = monthly_expenses / 30 if monthly_expenses else 0
+    available_cash = max(cash - cash_floor, 0.0)
+    daily_expense = monthly_expenses / 30 if monthly_expenses else 0.0
     runway_days = (cash / daily_expense) if daily_expense > 0 else 999.0
     cash_reserve_ratio = (cash / cash_floor) if cash_floor > 0 else 999.0
 
@@ -141,23 +172,30 @@ def solve_payment_strategy(
     hard_pairs = [pair for pair in scored_pairs if pair[1].is_hard_constraint]
     soft_pairs = [pair for pair in scored_pairs if not pair[1].is_hard_constraint]
 
-    hard_pairs = sorted(hard_pairs, key=lambda pair: pair[1].priority_value, reverse=True)
+    hard_pairs = sorted(
+        hard_pairs,
+        key=lambda pair: (pair[1].survival_impact, -pair[0].amount),
+        reverse=True,
+    )
     selected: list[ScoredBill] = []
     delayed: list[ScoredBill] = []
     running_total = 0.0
+    hard_shortfall_detected = False
 
     for bill, solvency_score in hard_pairs:
-        scored_bill = _to_scored_bill(bill, solvency_score)
         if running_total + bill.amount <= available_cash:
+            scored_bill = _to_scored_bill(bill, solvency_score)
             selected.append(scored_bill)
             running_total += bill.amount
         else:
+            scored_bill = _to_scored_bill(bill, solvency_score, affordability_warning=True)
             delayed.append(scored_bill)
+            hard_shortfall_detected = True
 
-    soft_budget = max(available_cash - running_total, 0)
+    soft_budget = max(available_cash - running_total, 0.0)
     ranked_soft_pairs = sorted(
         soft_pairs,
-        key=lambda pair: (pair[1].priority_value / pair[0].amount) if pair[0].amount else pair[1].priority_value,
+        key=lambda pair: (pair[1].priority_value / pair[0].amount) if pair[0].amount > 0 else 0.0,
         reverse=True,
     )
 
@@ -171,19 +209,38 @@ def solve_payment_strategy(
             delayed.append(scored_bill)
 
     total = round(sum(item.bill.amount for item in selected), 2)
-    runway = ((cash - total) / (monthly_expenses / 30)) if monthly_expenses else 999.0
-    if company_category == RiskCategory.CRITICAL:
+    remaining_cash = cash - total
+    runway = (remaining_cash / (monthly_expenses / 30)) if monthly_expenses else 999.0
+    if hard_shortfall_detected:
+        strategy = "Critical insolvency triage"
+        explanation = (
+            "WARNING: Hard constraints exceed available liquidity. Critical obligations were delayed due to balance "
+            "limits. Immediate capital injection or restructuring is required."
+        )
+    elif company_category == RiskCategory.CRITICAL:
         strategy = "Hard-constraint survival triage"
-        explanation = "CRITICAL mode pays existential obligations first, then spends any remaining cash on the highest solvency-preserving soft decisions."
+        explanation = (
+            "CRITICAL mode pays existential obligations first, sorted by survival impact and affordability, then "
+            "spends remaining cash on the highest solvency-preserving soft decisions."
+        )
     elif company_category == RiskCategory.RISKY:
         strategy = "Crisis-weighted solvency optimization"
-        explanation = "RISKY mode shifts weight toward penalty and revenue continuity while keeping hard constraints ahead of all soft scoring."
+        explanation = (
+            "RISKY mode shifts weight toward penalty and revenue continuity while keeping hard constraints ahead of all "
+            "soft scoring."
+        )
     elif company_category == RiskCategory.SAFE:
         strategy = "Full solvency optimization"
-        explanation = "SAFE mode still honors hard constraints first, but uses softer relationship and revenue signals because runway pressure is lower."
+        explanation = (
+            "SAFE mode honors hard constraints first, but uses softer relationship and revenue signals because runway "
+            "pressure is lower."
+        )
     else:
         strategy = "Balanced solvency optimization"
-        explanation = "STABLE mode separates must-pay obligations from negotiable bills, then ranks the negotiable set by solvency value per rupee."
+        explanation = (
+            "STABLE mode separates must-pay obligations from negotiable bills, then ranks the negotiable set by "
+            "solvency value per rupee."
+        )
     return OptimizationResult(
         strategy=strategy,
         selected_bills=selected,
@@ -191,4 +248,5 @@ def solve_payment_strategy(
         total_selected_amount=total,
         projected_runway_days=round(runway, 1),
         explanation=explanation,
+        critical_shortfall=hard_shortfall_detected,
     )
