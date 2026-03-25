@@ -1,4 +1,4 @@
-import type { AuthResponse, ConfirmPaymentsResponse, DashboardState, EmailDraft, InvoiceUploadResponse, OptimizerResult, User } from "./types";
+import type { AuthResponse, ConfirmPaymentsResponse, DashboardState, EmailDraft, InvoiceUploadResponse, OptimizerResult, Payable, User } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -63,10 +63,36 @@ export const api = {
       },
       token
     ),
-  uploadInvoice: (token: string, payload: { file?: File; debugFill?: boolean }) => {
+  uploadInvoice: (
+    token: string,
+    payload: {
+      file?: File;
+      debugFill?: boolean;
+      vendorName?: string;
+      amount?: number;
+      dueDate?: string;
+      category?: string;
+      trustScore?: number;
+    }
+  ) => {
     const formData = new FormData();
     if (payload.file) {
       formData.append("file", payload.file);
+    }
+    if (payload.vendorName) {
+      formData.append("vendor_name", payload.vendorName);
+    }
+    if (payload.amount != null) {
+      formData.append("amount", String(payload.amount));
+    }
+    if (payload.dueDate) {
+      formData.append("due_date", payload.dueDate);
+    }
+    if (payload.category) {
+      formData.append("category", payload.category);
+    }
+    if (payload.trustScore != null) {
+      formData.append("trust_score", String(payload.trustScore));
     }
     formData.append("debug_fill", String(Boolean(payload.debugFill)));
     return request<InvoiceUploadResponse>("/upload-invoice", {
@@ -74,6 +100,15 @@ export const api = {
       body: formData
     }, token);
   },
+  updateTrustScore: (token: string, billId: number, trustScore: number) =>
+    request<Payable>(
+      `/payables/${billId}/trust-score`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ trust_score: trustScore })
+      },
+      token
+    ),
   runOptimizer: (token: string) => request<OptimizerResult>("/run-optimizer", { method: "POST" }, token),
   confirmPayments: (token: string, billIds: number[]) =>
     request<ConfirmPaymentsResponse>("/confirm-payments", {

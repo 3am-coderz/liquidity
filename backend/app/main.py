@@ -27,6 +27,7 @@ from .schemas import (
     ResetUserDataRequest,
     ResetUserDataResponse,
     Token,
+    TrustScoreUpdateRequest,
     UserCreate,
     UserLogin,
     UserOut,
@@ -77,6 +78,7 @@ def _serialize_payable(payable: Payable) -> PayableOut:
         days_overdue=payable.days_overdue,
         priority_label=priority_label,
         priority_reason=priority_reason,
+        trust_score=payable.trust_score,
         score=None,
         is_hard_constraint=None,
         survival_impact=None,
@@ -97,6 +99,7 @@ def _serialize_scored_bill(scored_bill: ScoredBill) -> PayableOut:
         days_overdue=base.days_overdue,
         priority_label=base.priority_label,
         priority_reason=base.priority_reason,
+        trust_score=base.trust_score,
         score=scored_bill.score,
         is_hard_constraint=scored_bill.is_hard_constraint,
         survival_impact=scored_bill.survival_impact,
@@ -317,6 +320,7 @@ def upload_invoice(
     amount: float | None = Form(default=None),
     due_date: str | None = Form(default=None),
     category: str | None = Form(default=None),
+    trust_score: float | None = Form(default=None),
     debug_fill: bool = Form(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -365,7 +369,8 @@ def upload_invoice(
         resolved_amount or (3200 if debug_fill else 4500),
         extracted_text,
     )
-    trust_score, penalty_risk, criticality, revenue_impact, implied_critical = priority_weights(priority_label)
+    default_trust_score, penalty_risk, criticality, revenue_impact, implied_critical = priority_weights(priority_label)
+    resolved_trust_score = default_trust_score if trust_score is None else min(max(trust_score, 0.0), 1.0)
     vendor_aggression = _infer_vendor_aggression(resolved_category or "Operations", priority_label, extracted_text)
     blocks_revenue = _infer_blocks_revenue(resolved_category or "Operations", extracted_text)
     payable = Payable(
@@ -380,7 +385,7 @@ def upload_invoice(
         invoice_data=invoice_data,
         vendor_aggression=vendor_aggression,
         blocks_revenue=blocks_revenue,
-        trust_score=trust_score,
+        trust_score=resolved_trust_score,
         penalty_risk=penalty_risk,
         criticality=criticality,
         revenue_impact=revenue_impact,
@@ -403,6 +408,28 @@ def upload_invoice(
         source_file_name=file.filename if file is not None else None,
         ocr_engine="tesseract" if file is not None else "debug-fill",
     )
+
+
+@app.patch("/payables/{bill_id}/trust-score", response_model=PayableOut)
+def update_trust_score(
+    bill_id: int,
+    payload: TrustScoreUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PayableOut:
+    payable = (
+        db.query(Payable)
+        .filter(Payable.user_id == current_user.id, Payable.id == bill_id)
+        .first()
+    )
+    if not payable:
+        raise HTTPException(status_code=404, detail="Payable not found")
+
+    payable.trust_score = payload.trust_score
+    db.add(payable)
+    db.commit()
+    db.refresh(payable)
+    return _serialize_payable(payable)
 
 
 @app.get("/payables/{bill_id}/invoice")
@@ -469,6 +496,14 @@ def run_optimizer(current_user: User = Depends(get_current_user), db: Session = 
                 "hard constraints. Add more cash, reduce required bills, or reset your opening balance before running again."
             ),
         )
+
+    hard_constraints_consumed_cash = any(item.is_hard_constraint for item in result.selected_bills)
+    if hard_constraints_consumed_cash:
+        for delayed_bill in result.delayed_bills:
+            if delayed_bill.is_hard_constraint:
+                continue
+            delayed_bill.bill.trust_score = round(max(0.0, delayed_bill.bill.trust_score - 0.1), 3)
+            db.add(delayed_bill.bill)
 
     decision = Decision(
         user_id=current_user.id,

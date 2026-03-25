@@ -2,6 +2,7 @@
 
 import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 import { api } from "./api";
 import type { AuthResponse, DashboardState, EmailDraft, InvoiceUploadResponse, OptimizerResult, RiskCategory } from "./types";
@@ -36,6 +37,7 @@ export function DashboardShell() {
   const [uploadedInvoice, setUploadedInvoice] = useState<InvoiceUploadResponse | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [selectedPaidBillIds, setSelectedPaidBillIds] = useState<number[]>([]);
+  const [trustEdits, setTrustEdits] = useState<Record<number, string>>({});
   const [status, setStatus] = useState("Ready for Sarah's crisis simulation.");
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -66,6 +68,9 @@ export function DashboardShell() {
   }, [token]);
 
   const category = dashboard?.company.risk_category ?? optimizerResult?.category;
+  const spendableCash = dashboard ? Math.max(dashboard.company.cash_balance - 2000, 0) : 0;
+  const hasPayables = (dashboard?.payables.length ?? 0) > 0;
+  const canRunEngine = Boolean(token && hasPayables && spendableCash > 0 && !loading);
 
   const narrative = useMemo(() => {
     if (!dashboard) {
@@ -86,6 +91,7 @@ export function DashboardShell() {
     try {
       const data = await api.dashboardState(nextToken);
       setDashboard(data);
+      setTrustEdits(Object.fromEntries(data.payables.map((bill) => [bill.id, bill.trust_score.toFixed(2)])));
       setStatus("Dashboard synced with the latest company health snapshot.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load dashboard.");
@@ -188,6 +194,16 @@ export function DashboardShell() {
 
   async function handleOptimize() {
     if (!token) return;
+    if (!hasPayables) {
+      setStatus("Upload or add at least one payable before running the engine.");
+      return;
+    }
+    if (spendableCash <= 0) {
+      setStatus(
+        `Run engine is blocked because only ${formatCurrency(dashboard?.company.cash_balance ?? 0)} is available and the app must preserve a Rs 2,000 cash floor.`
+      );
+      return;
+    }
     setLoading(true);
     try {
       const result = await api.runOptimizer(token);
@@ -224,6 +240,25 @@ export function DashboardShell() {
     setSelectedPaidBillIds((current) =>
       current.includes(billId) ? current.filter((id) => id !== billId) : [...current, billId]
     );
+  }
+
+  async function handleTrustScoreSave(billId: number) {
+    if (!token) return;
+    const parsedValue = Number(trustEdits[billId]);
+    if (Number.isNaN(parsedValue) || parsedValue < 0 || parsedValue > 1) {
+      setStatus("Trust score must be between 0.00 and 1.00.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.updateTrustScore(token, billId, parsedValue);
+      await refreshDashboard(token);
+      setStatus("Trust score updated for the selected vendor.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to update trust score.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleConfirmPayments() {
@@ -427,6 +462,12 @@ export function DashboardShell() {
           >
             Logout
           </button>
+          <Link
+            className="rounded-full border border-white/10 px-4 py-2 text-sm text-[var(--muted)] transition hover:border-white/20"
+            href="/upload-data"
+          >
+            Upload data
+          </Link>
           <button
             className="rounded-full border border-rose-400/20 px-4 py-2 text-sm text-rose-200 transition hover:border-rose-400/40"
             onClick={() => void handleDeleteMyData()}
@@ -471,15 +512,27 @@ export function DashboardShell() {
                 <span className="block text-sm uppercase tracking-[0.2em] text-amber-100">Step 2</span>
                 <span className="mt-2 block font-medium">Upload real file</span>
               </button>
-              <button className="rounded-3xl bg-emerald-500/15 px-4 py-4 text-left transition hover:bg-emerald-500/25" onClick={() => void handleOptimize()} type="button">
+              <button
+                className="rounded-3xl bg-emerald-500/15 px-4 py-4 text-left transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!canRunEngine}
+                onClick={() => void handleOptimize()}
+                type="button"
+              >
                 <span className="block text-sm uppercase tracking-[0.2em] text-emerald-100">Step 3</span>
-                <span className="mt-2 block font-medium">Run engine</span>
+                <span className="mt-2 block font-medium">
+                  {!hasPayables ? "Add a bill first" : spendableCash <= 0 ? "Need more cash" : "Run engine"}
+                </span>
               </button>
               <button className="rounded-3xl bg-rose-500/15 px-4 py-4 text-left transition hover:bg-rose-500/25" onClick={() => void handleEmailDraft()} type="button">
                 <span className="block text-sm uppercase tracking-[0.2em] text-rose-100">Step 4</span>
                 <span className="mt-2 block font-medium">Generate email</span>
               </button>
             </div>
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              {hasPayables
+                ? `Spendable cash for the engine: ${formatCurrency(spendableCash)} after preserving the Rs 2,000 safety floor.`
+                : "Add a payable to unlock the engine."}
+            </p>
             <input
               accept="image/png,image/jpeg,image/jpg,image/webp,image/tiff,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp"
               className="hidden"
@@ -517,6 +570,28 @@ export function DashboardShell() {
                       </div>
                     </div>
                     <p className="mt-3 text-sm text-[var(--muted)]">{bill.priority_reason}</p>
+                    <div className="mt-4 flex flex-wrap items-end gap-3">
+                      <label className="text-sm text-[var(--muted)]">
+                        <span className="mb-2 block">Trust score</span>
+                        <input
+                          className="w-32 rounded-2xl border border-white/10 bg-black/10 px-3 py-2 text-[var(--text)]"
+                          max="1"
+                          min="0"
+                          onChange={(event) => setTrustEdits((current) => ({ ...current, [bill.id]: event.target.value }))}
+                          step="0.01"
+                          type="number"
+                          value={trustEdits[bill.id] ?? bill.trust_score.toFixed(2)}
+                        />
+                      </label>
+                      <button
+                        className="rounded-full border border-white/10 px-3 py-2 text-xs uppercase tracking-[0.2em] text-[var(--muted)] transition hover:border-white/20"
+                        disabled={loading}
+                        onClick={() => void handleTrustScoreSave(bill.id)}
+                        type="button"
+                      >
+                        Save trust
+                      </button>
+                    </div>
                   </article>
                 ))}
                 {dashboard?.payables.length === 0 ? <p className="text-sm text-[var(--muted)]">No bills uploaded yet for this user.</p> : null}
@@ -560,6 +635,7 @@ export function DashboardShell() {
                             <span className="text-xs uppercase tracking-[0.2em] text-emerald-200">Score {formatScore(bill.score)}</span>
                           </div>
                           <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[var(--muted)]">{bill.priority_label} priority</p>
+                          <p className="mt-2 text-xs text-[var(--muted)]">Trust score {bill.trust_score.toFixed(2)}</p>
                         </div>
                       ))}
                     </div>
@@ -573,6 +649,7 @@ export function DashboardShell() {
                             <span>{bill.vendor_name} - {formatCurrency(bill.amount)}</span>
                             <span className="text-xs uppercase tracking-[0.2em] text-emerald-200">Recommended pay · Score {formatScore(bill.score)}</span>
                           </div>
+                          <p className="mt-2 text-xs text-[var(--muted)]">Trust score {bill.trust_score.toFixed(2)}</p>
                         </div>
                       ))}
                       {optimizerResult.delayed_bills.map((bill) => (
@@ -581,6 +658,7 @@ export function DashboardShell() {
                             <span>{bill.vendor_name} - {formatCurrency(bill.amount)}</span>
                             <span className="text-xs uppercase tracking-[0.2em] text-rose-200">Recommended delay · Score {formatScore(bill.score)}</span>
                           </div>
+                          <p className="mt-2 text-xs text-[var(--muted)]">Trust score {bill.trust_score.toFixed(2)}</p>
                         </div>
                       ))}
                     </div>

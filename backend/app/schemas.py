@@ -70,6 +70,7 @@ class PayableOut(BaseModel):
     days_overdue: int
     priority_label: str
     priority_reason: str
+    trust_score: float
     score: float | None = None
     is_hard_constraint: bool | None = None
     survival_impact: float | None = None
@@ -131,6 +132,10 @@ class InvoiceUploadResponse(BaseModel):
     parsed_invoice: OCRParseSummary | None = None
     source_file_name: str | None = None
     ocr_engine: str
+
+
+class TrustScoreUpdateRequest(BaseModel):
+    trust_score: float = Field(ge=0, le=1)
 
 
 class ConnectBankResponse(BaseModel):

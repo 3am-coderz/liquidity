@@ -39,7 +39,10 @@ export type Payable = {
   days_overdue: number;
   priority_label: string;
   priority_reason: string;
+  trust_score: number;
   score: number | null;
+  is_hard_constraint?: boolean | null;
+  survival_impact?: number | null;
 };
 
 export type OCRParseSummary = {
