@@ -17,3 +17,7 @@ frontend/.env.local
 # General
 .env
 venv/
+.logs/
+.tools/
+backend/.venv/
+frontend/tsconfig.tsbuildinfo

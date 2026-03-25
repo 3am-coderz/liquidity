@@ -71,6 +71,8 @@ class PayableOut(BaseModel):
     priority_label: str
     priority_reason: str
     score: float | None = None
+    is_hard_constraint: bool | None = None
+    survival_impact: float | None = None
 
 
 class OCRParseSummary(BaseModel):

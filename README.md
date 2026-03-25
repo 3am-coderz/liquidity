@@ -11,7 +11,8 @@ This workspace contains a solo-hackathon MVP split into:
 1. Create a virtual environment.
 2. Install dependencies with `pip install -r backend/requirements.txt`.
 3. Copy `backend/.env.example` to `backend/.env` if you want custom settings.
-4. Run `uvicorn app.main:app --reload` from `backend/`.
+4. Optional: point `DATABASE_URL` at PostgreSQL with a URL like `postgresql+psycopg://postgres:postgres@localhost:5432/liquidity`.
+5. Run `uvicorn app.main:app --reload` from `backend/`.
 
 For real invoice OCR uploads, install the Tesseract binary on your machine:
 
@@ -39,7 +40,7 @@ The frontend expects the backend at `http://127.0.0.1:8000` by default.
 ## OCR Upload Notes
 
 - The real upload flow currently supports image invoices: `png`, `jpg`, `jpeg`, `webp`, `tiff`, and `bmp`.
-- The backend stores uploaded files in `backend/uploads/`.
+- Uploaded invoice files are stored directly in the database as binary data instead of being written to `backend/uploads/`.
 - If Tesseract is missing, the API returns a clear error telling you to install it or set `TESSERACT_CMD`.
 
 ## Resetting Old Demo Data

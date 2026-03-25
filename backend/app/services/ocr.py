@@ -1,9 +1,8 @@
 import re
-import shutil
 from dataclasses import dataclass
 from datetime import date
+from io import BytesIO
 from pathlib import Path
-from uuid import uuid4
 
 import pytesseract
 from dateutil import parser as date_parser
@@ -26,7 +25,7 @@ SUPPORTED_IMAGE_TYPES = {
 
 @dataclass
 class OCRExtraction:
-    text: str
+    text: str | None
     vendor_name: str | None
     amount: float | None
     due_date: date | None
@@ -34,14 +33,9 @@ class OCRExtraction:
     priority_label: str
     priority_reason: str
     confidence_notes: list[str]
-    stored_path: str
+    file_bytes: bytes
+    content_type: str
     source_file_name: str
-
-
-def ensure_uploads_dir() -> Path:
-    upload_path = Path(settings.uploads_dir)
-    upload_path.mkdir(parents=True, exist_ok=True)
-    return upload_path
 
 
 def configure_tesseract() -> None:
@@ -239,36 +233,33 @@ def _extract_amount_candidates(text: str) -> float | None:
     return None
 
 
-def _save_upload(file: UploadFile, uploads_dir: Path) -> Path:
+def _read_upload_bytes(file: UploadFile) -> tuple[bytes, str]:
     suffix = Path(file.filename or "").suffix.lower()
     if not suffix:
         suffix = SUPPORTED_IMAGE_TYPES.get(file.content_type or "", "")
     if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp", ""}:
         raise HTTPException(status_code=400, detail="Only image invoice uploads are supported for OCR right now.")
 
-    if not suffix:
-        suffix = ".png"
+    file_bytes = file.file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded invoice file is empty.")
 
-    file_name = f"{uuid4().hex}{suffix}"
-    destination = uploads_dir / file_name
-    with destination.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return destination
+    content_type = file.content_type or "application/octet-stream"
+    return file_bytes, content_type
 
 
 def extract_invoice_data(file: UploadFile) -> OCRExtraction:
     verify_tesseract_available()
-    uploads_dir = ensure_uploads_dir()
-    stored_path = _save_upload(file, uploads_dir)
+    file_bytes, content_type = _read_upload_bytes(file)
 
     try:
-        image = Image.open(stored_path)
+        image = Image.open(BytesIO(file_bytes))
         extracted_text = pytesseract.image_to_string(image, config="--oem 3 --psm 6")
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Unable to read the uploaded file as an image invoice.") from exc
 
     extracted_text = _normalize_ocr_text(extracted_text).strip()
-    vendor_name = _extract_vendor_name(extracted_text, file.filename or stored_path.name)
+    vendor_name = _extract_vendor_name(extracted_text, file.filename or "uploaded-invoice")
     amount = _extract_amount(extracted_text) or _extract_amount_candidates(extracted_text)
     due_date = _extract_due_date(extracted_text)
     category = _infer_category(extracted_text)
@@ -286,6 +277,7 @@ def extract_invoice_data(file: UploadFile) -> OCRExtraction:
         priority_label=priority_label,
         priority_reason=priority_reason,
         confidence_notes=notes,
-        stored_path=str(stored_path).replace("\\", "/"),
-        source_file_name=file.filename or stored_path.name,
+        file_bytes=file_bytes,
+        content_type=content_type,
+        source_file_name=file.filename or "uploaded-invoice",
     )

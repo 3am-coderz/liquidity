@@ -10,10 +10,9 @@ class Settings(BaseSettings):
     demo_user_email: str = "sarah@lle.demo"
     demo_user_password: str = "Demo123!"
     frontend_origin: str = "http://localhost:3000"
-    uploads_dir: str = "./uploads"
     tesseract_cmd: str | None = None
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

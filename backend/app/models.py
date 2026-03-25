@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -74,6 +74,11 @@ class Payable(Base):
     due_date: Mapped[date] = mapped_column(Date)
     category: Mapped[str] = mapped_column(String(100))
     invoice_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    invoice_file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    invoice_content_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    invoice_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    vendor_aggression: Mapped[str] = mapped_column(String(30), default="NEUTRAL")
+    blocks_revenue: Mapped[bool] = mapped_column(Boolean, default=False)
     trust_score: Mapped[float] = mapped_column(Float, default=0.5)
     penalty_risk: Mapped[float] = mapped_column(Float, default=0.5)
     criticality: Mapped[float] = mapped_column(Float, default=0.5)

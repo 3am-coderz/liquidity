@@ -27,7 +27,7 @@ export function DashboardShell() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [companyName, setCompanyName] = useState("My Company");
-  const [openingCashBalance, setOpeningCashBalance] = useState("0");
+  const [openingCashBalance, setOpeningCashBalance] = useState("10000");
   const [token, setToken] = useState<string | null>(null);
   const [auth, setAuth] = useState<AuthResponse | null>(null);
   const [dashboard, setDashboard] = useState<DashboardState | null>(null);

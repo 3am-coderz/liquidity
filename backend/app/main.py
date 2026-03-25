@@ -1,13 +1,13 @@
 from datetime import datetime
 
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .config import settings
-from .db import Base, engine, get_db
+from .db import Base, engine, get_db, run_startup_migrations
 from .models import Account, Company, Decision, Payable, ThemePreference, User
 from .schemas import (
     AuthResponse,
@@ -32,7 +32,7 @@ from .schemas import (
     UserOut,
 )
 from .services.cse import classify_company
-from .services.ocr import ensure_uploads_dir, extract_invoice_data
+from .services.ocr import extract_invoice_data
 from .services.priorities import infer_priority, priority_weights
 from .services.optimizer import ScoredBill, solve_payment_strategy
 
@@ -64,19 +64,22 @@ def _serialize_company(company: Company) -> CompanyMetricsResponse:
 
 def _serialize_payable(payable: Payable) -> PayableOut:
     priority_label, priority_reason = infer_priority(payable.category, payable.due_date, payable.amount)
+    invoice_url = f"/payables/{payable.id}/invoice" if payable.invoice_data else payable.invoice_url
     return PayableOut(
         id=payable.id,
         vendor_name=payable.vendor_name,
         amount=payable.amount,
         due_date=payable.due_date,
         category=payable.category,
-        invoice_url=payable.invoice_url,
+        invoice_url=invoice_url,
         is_critical=payable.is_critical,
         payroll_date=payable.payroll_date,
         days_overdue=payable.days_overdue,
         priority_label=priority_label,
         priority_reason=priority_reason,
         score=None,
+        is_hard_constraint=None,
+        survival_impact=None,
     )
 
 
@@ -95,7 +98,30 @@ def _serialize_scored_bill(scored_bill: ScoredBill) -> PayableOut:
         priority_label=base.priority_label,
         priority_reason=base.priority_reason,
         score=scored_bill.score,
+        is_hard_constraint=scored_bill.is_hard_constraint,
+        survival_impact=scored_bill.survival_impact,
     )
+
+
+def _infer_vendor_aggression(category: str, priority_label: str, extracted_text: str | None) -> str:
+    lowered = (extracted_text or "").lower()
+    normalized_category = (category or "Operations").lower()
+    if any(token in lowered for token in ["final notice", "legal notice", "disconnect", "termination", "suspension"]):
+        return "ADVERSARIAL"
+    if normalized_category in {"legal", "tax", "utilities"} or priority_label == "HIGH":
+        return "ADVERSARIAL"
+    if any(token in lowered for token in ["thank you", "please contact us", "grace period", "friendly reminder"]):
+        return "COOPERATIVE"
+    return "NEUTRAL"
+
+
+def _infer_blocks_revenue(category: str, extracted_text: str | None) -> bool:
+    lowered = (extracted_text or "").lower()
+    normalized_category = (category or "Operations").lower()
+    revenue_blocking_categories = {"inventory", "utilities", "payroll"}
+    if normalized_category in revenue_blocking_categories:
+        return True
+    return any(token in lowered for token in ["stockout", "supply stop", "disconnect", "production halt", "service suspension"])
 
 
 def _decision_out(decision: Decision) -> DecisionOut:
@@ -156,7 +182,7 @@ def _ensure_sqlite_schema_compatibility() -> None:
 def startup() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_schema_compatibility()
-    ensure_uploads_dir()
+    run_startup_migrations()
 
 
 @app.get("/health")
@@ -308,7 +334,10 @@ def upload_invoice(
     resolved_amount = amount
     resolved_due_date = parsed_due_date
     resolved_category = category
-    invoice_url = "/demo/uploaded-invoice.pdf"
+    invoice_url = None
+    invoice_file_name: str | None = None
+    invoice_content_type: str | None = None
+    invoice_data: bytes | None = None
 
     if file is not None:
         extraction = extract_invoice_data(file)
@@ -317,7 +346,9 @@ def upload_invoice(
         resolved_amount = resolved_amount or extraction.amount
         resolved_due_date = resolved_due_date or extraction.due_date
         resolved_category = resolved_category or extraction.category
-        invoice_url = extraction.stored_path
+        invoice_file_name = extraction.source_file_name
+        invoice_content_type = extraction.content_type
+        invoice_data = extraction.file_bytes
         parsed_invoice = OCRParseSummary(
             vendor_name=extraction.vendor_name,
             amount=extraction.amount,
@@ -335,6 +366,8 @@ def upload_invoice(
         extracted_text,
     )
     trust_score, penalty_risk, criticality, revenue_impact, implied_critical = priority_weights(priority_label)
+    vendor_aggression = _infer_vendor_aggression(resolved_category or "Operations", priority_label, extracted_text)
+    blocks_revenue = _infer_blocks_revenue(resolved_category or "Operations", extracted_text)
     payable = Payable(
         user_id=current_user.id,
         vendor_name=resolved_vendor_name or ("Emergency Linen Co." if debug_fill else "Debug Supplier"),
@@ -342,6 +375,11 @@ def upload_invoice(
         due_date=resolved_due_date or datetime.utcnow().date(),
         category=resolved_category or "Operations",
         invoice_url=invoice_url,
+        invoice_file_name=invoice_file_name,
+        invoice_content_type=invoice_content_type,
+        invoice_data=invoice_data,
+        vendor_aggression=vendor_aggression,
+        blocks_revenue=blocks_revenue,
         trust_score=trust_score,
         penalty_risk=penalty_risk,
         criticality=criticality,
@@ -365,6 +403,26 @@ def upload_invoice(
         source_file_name=file.filename if file is not None else None,
         ocr_engine="tesseract" if file is not None else "debug-fill",
     )
+
+
+@app.get("/payables/{bill_id}/invoice")
+def get_invoice_file(
+    bill_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    payable = (
+        db.query(Payable)
+        .filter(Payable.user_id == current_user.id, Payable.id == bill_id)
+        .first()
+    )
+    if not payable or not payable.invoice_data:
+        raise HTTPException(status_code=404, detail="Invoice file not found")
+
+    file_name = payable.invoice_file_name or f"invoice-{payable.id}"
+    content_type = payable.invoice_content_type or "application/octet-stream"
+    headers = {"Content-Disposition": f'inline; filename="{file_name}"'}
+    return Response(content=payable.invoice_data, media_type=content_type, headers=headers)
 
 
 @app.post("/connect-bank", response_model=ConnectBankResponse)
@@ -391,7 +449,27 @@ def run_optimizer(current_user: User = Depends(get_current_user), db: Session = 
         raise HTTPException(status_code=400, detail="Upload at least one invoice before running the engine.")
 
     company = _refresh_company(company, db)
+    available_cash = max(company.cash_balance - MIN_CASH_FLOOR, 0)
+    if available_cash <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No spendable cash is available. Current balance is Rs {company.cash_balance:.0f} "
+                f"and the engine must preserve a cash floor of Rs {MIN_CASH_FLOOR}. "
+                "Use Delete my data to reset your opening cash balance or sync a funded account first."
+            ),
+        )
+
     result = solve_payment_strategy(company.risk_category, payables, company.cash_balance, company.monthly_expenses)
+    if not result.selected_bills:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The engine could not schedule any payments without breaking the cash floor or violating the current "
+                "hard constraints. Add more cash, reduce required bills, or reset your opening balance before running again."
+            ),
+        )
+
     decision = Decision(
         user_id=current_user.id,
         selected_bill_ids=",".join(str(item.bill.id) for item in result.selected_bills),
@@ -404,7 +482,7 @@ def run_optimizer(current_user: User = Depends(get_current_user), db: Session = 
     return OptimizerDecisionResponse(
         category=company.risk_category,
         strategy=result.strategy,
-        available_cash=max(company.cash_balance - MIN_CASH_FLOOR, 0),
+        available_cash=available_cash,
         cash_floor=MIN_CASH_FLOOR,
         total_selected_amount=result.total_selected_amount,
         projected_runway_days=result.projected_runway_days,

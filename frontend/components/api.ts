@@ -15,13 +15,21 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
   });
 
   if (!response.ok) {
-    const raw = await response.text();
+    const rawBody = await response.text();
+    let message = rawBody || `Request failed: ${response.status}`;
+
     try {
-      const parsed = JSON.parse(raw) as { detail?: string };
-      throw new Error(parsed.detail || raw || `Request failed: ${response.status}`);
+      const parsed = JSON.parse(rawBody) as { detail?: string | { msg?: string }[] };
+      if (typeof parsed.detail === "string") {
+        message = parsed.detail;
+      } else if (Array.isArray(parsed.detail) && parsed.detail.length > 0) {
+        message = parsed.detail.map((item) => item.msg ?? "Request validation failed.").join(" ");
+      }
     } catch {
-      throw new Error(raw || `Request failed: ${response.status}`);
+      // Keep the raw text when the backend didn't send JSON.
     }
+
+    throw new Error(message);
   }
 
   return response.json() as Promise<T>;
