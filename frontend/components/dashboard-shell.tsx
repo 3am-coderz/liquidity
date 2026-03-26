@@ -72,13 +72,6 @@ export function DashboardShell() {
   const hasPayables = (dashboard?.payables.length ?? 0) > 0;
   const canRunEngine = Boolean(token && hasPayables && spendableCash > 0 && !loading);
 
-  const narrative = useMemo(() => {
-    if (!dashboard) {
-      return "The engine starts with financial context before it decides what to pay.";
-    }
-    return `${dashboard.company.company_name} is being evaluated against current cash flow, upcoming bills, and risk mode.`;
-  }, [dashboard]);
-
   function formatCurrency(amount: number) {
     return inrFormatter.format(amount);
   }
@@ -450,8 +443,6 @@ export function DashboardShell() {
       <section className="mb-6 flex flex-col gap-4 rounded-[2rem] glass p-6 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.3em] text-[var(--muted)]">Liquidity Logic Engine</p>
-          <h1 className="mt-2 text-4xl font-semibold">Meet Sarah, a cafe owner balancing survival against supplier trust.</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)]">{narrative}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {category ? (
