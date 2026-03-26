@@ -1,6 +1,6 @@
 # 💧 Liquidity Logic Engine
 
-###  Cashflow Decision Engine for Small Businesses
+### AI-Powered Cashflow Decision Engine for Small Businesses
 
 > *"Don't just track your cash. Decide with it."*
 
@@ -26,8 +26,6 @@ reconciliation - A solvency decision engine - A financial dashboard
 
 Small businesses often fail not because they are unprofitable, but
 because they **run out of cash at the wrong time**.
-
-### Main Challenges
 
   Challenge           Result
   ------------------- --------------------------
@@ -56,21 +54,6 @@ Liquidity Logic Engine acts like a **financial decision assistant**.
 
 ------------------------------------------------------------------------
 
-## ⚙️ Core Features
-
-### Feature Breakdown
-
-  Feature           Description            Benefit
-  ----------------- ---------------------- ---------------
-  OCR Upload        Extract invoice data   Saves time
-  Manual Entry      Add bills manually     Flexibility
-  Bank Sync         Sync bank data         Real balance
-  Reconciliation    Adjust balance         Accurate cash
-  Solvency Engine   Pay/Delay decision     Survival
-  Dashboard         Financial overview     Clarity
-
-------------------------------------------------------------------------
-
 ## 🔄 How The System Works
 
     Upload Invoice / Add Bill
@@ -95,54 +78,101 @@ Liquidity Logic Engine acts like a **financial decision assistant**.
 
 ------------------------------------------------------------------------
 
-## 🧠 Solvency Engine
+## 🧠 Solvency Engine (Core Logic)
 
-The solvency engine is the **core decision-making module** of the
-system.
+The Solvency Engine is the **decision-making brain** of the Liquidity
+Logic Engine.\
+It determines which bills should be paid using **Hard Constraints + Soft
+Constraints + Knapsack Optimization**.
 
-It classifies bills into priority levels:
+------------------------------------------------------------------------
 
-  Bill Type       Priority   Action
-  --------------- ---------- ----------
-  Salaries        Critical   Pay
-  Rent            Critical   Pay
-  Taxes           Critical   Pay
-  Loan EMI        Critical   Pay
-  Vendors         Medium     Optimize
-  Subscriptions   Low        Delay
+### 1. Hard vs Soft Constraints
 
-### Decision Factors
+  -----------------------------------------------------------------------
+  Constraint Type                      Examples              Rule
+  ------------------------------------ --------------------- ------------
+  Hard Constraints                     Salaries, Rent,       Must be paid
+                                       Taxes, Loan EMI       
 
-The engine uses multiple factors:
+  Soft Constraints                     Vendors,              Can be
+                                       Subscriptions,        delayed
+                                       Utilities             
 
-  Factor           Why It Matters
-  ---------------- --------------------------
-  Available cash   Determines affordability
-  Due date         Urgency
-  Trust score      Vendor relationship
-  Penalty risk     Late fee/legal risk
-  Revenue impact   Business survival
-  Days overdue     Priority
+  Strategic Bills                      Revenue generating    High
+                                       expenses              priority
 
-### Engine Output
+  Optional Bills                       Low impact expenses   Delay first
+  -----------------------------------------------------------------------
 
-The engine generates:
+**Rule:** Hard constraints are always satisfied first before
+optimization begins.
 
-  Output       Description
-  ------------ ------------------
-  Pay List     Bills to pay now
-  Delay List   Bills to delay
-  Strategy     Explanation
-  Warning      Shortfall alert
+------------------------------------------------------------------------
+
+### 2. Score Decider System
+
+Each bill is given a **Solvency Score** based on multiple business risk
+factors.
+
+  Factor              Description               Impact
+  ------------------- ------------------------- --------
+  Due Date            Urgency                   High
+  Trust Score         Vendor relationship       Medium
+  Penalty Risk        Late fee/legal risk       High
+  Revenue Impact      Affects business income   High
+  Vendor Aggression   Supplier strictness       Medium
+  Days Overdue        Delay severity            High
+
+### Score Formula (Concept)
+
+    Bill Score = 
+    (Revenue Impact × Weight) +
+    (Penalty Risk × Weight) +
+    (Trust Score × Weight) +
+    (Urgency × Weight) +
+    (Vendor Aggression × Weight)
+
+Bills with higher score = higher priority.
+
+------------------------------------------------------------------------
+
+### 3. Knapsack Optimization
+
+After hard constraints are paid, the remaining money is allocated using
+a **Knapsack Optimization Algorithm**.
+
+**Problem Type:**\
+This is similar to the **0/1 Knapsack Problem**:
+
+  Knapsack Term   Our System
+  --------------- ----------------
+  Weight          Bill Amount
+  Value           Bill Score
+  Capacity        Available Cash
+  Items           Bills
+
+**Goal:** Maximize total score while staying within available cash.
+
+So the system: - Selects the combination of bills - That maximizes
+business survival value - Without exceeding available cash
+
+This ensures **optimal use of limited money**.
+
+------------------------------------------------------------------------
+
+### 4. Engine Output
+
+  Output              Description
+  ------------------- -----------------------------------------
+  Pay List            Bills to pay now
+  Delay List          Bills to delay
+  Strategy            Explanation
+  Shortfall Warning   If cash not enough for hard constraints
 
 ------------------------------------------------------------------------
 
 ## 🏦 Bank Reconciliation
-
-Bank balance alone is not reliable because some payments are already
-committed.
-
-### Example
 
   Item                 Amount
   -------------------- ----------
@@ -153,8 +183,6 @@ committed.
 **Formula:**
 
     Available Cash = Bank Balance - Pending Payments
-
-This prevents **false financial decisions**.
 
 ------------------------------------------------------------------------
 
@@ -167,28 +195,19 @@ This prevents **false financial decisions**.
   Screenshot      Payable
   Bill Photo      Payable
 
-Supported formats:
-
-  Format   Supported
-  -------- -----------
-  PNG      Yes
-  JPG      Yes
-  JPEG     Yes
-  WEBP     Yes
-  TIFF     Yes
-  BMP      Yes
+Supported formats: PNG, JPG, JPEG, WEBP, TIFF, BMP
 
 ------------------------------------------------------------------------
 
 ## 🏗️ System Architecture
 
   Layer      Technology
-  ---------- ---------------------
+  ---------- -----------------------
   Frontend   Next.js
   Backend    FastAPI
   OCR        Tesseract
   Bank API   Setu
-  Engine     Optimization Engine
+  Engine     Knapsack Optimization
   Database   SQLite / PostgreSQL
   Hosting    Vercel / Render
 
@@ -196,90 +215,16 @@ Supported formats:
 
 ## 🛠️ Tech Stack
 
-  Category   Technology
-  ---------- --------------
-  Language   Python
-  Backend    FastAPI
-  Frontend   Next.js
-  OCR        Tesseract
-  Database   SQLite
-  API        Setu
-  Styling    Tailwind CSS
-
-------------------------------------------------------------------------
-
-## 📁 Project Structure
-
-    project/
-    ├── backend/
-    ├── frontend/
-    ├── database/
-    ├── docs/
-    ├── README.md
-
-  Folder     Description
-  ---------- ----------------
-  backend    API & Engine
-  frontend   User Interface
-  database   Database
-  docs       Documentation
-
-------------------------------------------------------------------------
-
-## ⚙️ Local Setup
-
-### Backend Setup
-
-    cd backend
-    python -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-    uvicorn app.main:app --reload
-
-### Frontend Setup
-
-    cd frontend
-    npm install
-    npm run dev
-
-------------------------------------------------------------------------
-
-## 🔌 API Overview
-
-  Endpoint             Method   Purpose
-  -------------------- -------- ------------------
-  /auth/register       POST     Register
-  /auth/login          POST     Login
-  /upload-invoice      POST     OCR
-  /run-optimizer       POST     Run engine
-  /confirm-payments    POST     Confirm payments
-  /connect-bank        POST     Bank sync
-  /financial-summary   GET      Summary
-
-------------------------------------------------------------------------
-
-## 📊 Data Model
-
-  Entity                Description
-  --------------------- ------------------
-  User                  Account
-  Company               Business
-  Payable               Bills
-  BankTransaction       Transactions
-  FinancialSummary      Summary
-  Decision              Engine result
-  PendingPaymentEvent   Pending payments
-
-------------------------------------------------------------------------
-
-## ⚠️ Known Limitations
-
-  Limitation                Reason
-  ------------------------- ---------------
-  OCR errors                Image quality
-  Mock bank data            Demo mode
-  SQLite                    Local DB
-  Not accounting software   Decision tool
+  Category       Technology
+  -------------- -------------------
+  Language       Python
+  Backend        FastAPI
+  Frontend       Next.js
+  OCR            Tesseract
+  Optimization   OR-Tools Knapsack
+  Database       SQLite
+  API            Setu
+  Styling        Tailwind CSS
 
 ------------------------------------------------------------------------
 
@@ -288,15 +233,13 @@ Supported formats:
   Member           Role
   ---------------- ----------
   Dhanush Kathir   Frontend
-  Anish Balaji     Frontend
+  Yuvashankar      Frontend
   Ashraf           Backend
-  Tejas            backend
+  Srinath          ML
 
 ------------------------------------------------------------------------
 
 ## 🏁 Final Note
 
-Liquidity Logic Engine is built to solve one critical problem:
-
-> **When you don't have enough money to pay everything, what should you
-> do first?**
+> When you don't have enough money to pay everything, the system decides
+> the best way to survive.
