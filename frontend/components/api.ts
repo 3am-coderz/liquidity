@@ -1,4 +1,4 @@
-import type { AuthResponse, ConfirmPaymentsResponse, DashboardState, EmailDraft, InvoiceUploadResponse, OptimizerResult, Payable, User } from "./types";
+import type { AuthResponse, ConfirmPaymentsResponse, ConnectBankResult, DashboardState, EmailDraft, InvoiceUploadResponse, ManualTransactionResult, OptimizerResult, Payable, User } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -53,7 +53,7 @@ export const api = {
       body: JSON.stringify({ theme })
     }, token),
   dashboardState: (token: string) => request<DashboardState>("/dashboard-state", undefined, token),
-  connectBank: (token: string) => request("/connect-bank", { method: "POST" }, token),
+  connectBank: (token: string) => request<ConnectBankResult>("/connect-bank", { method: "POST" }, token),
   resetUserData: (token: string, openingCashBalance: number) =>
     request<{ message: string }>(
       "/user-data",
@@ -73,6 +73,7 @@ export const api = {
       dueDate?: string;
       category?: string;
       trustScore?: number;
+      cashFlowDirection?: "money_in" | "money_out";
     }
   ) => {
     const formData = new FormData();
@@ -93,6 +94,9 @@ export const api = {
     }
     if (payload.trustScore != null) {
       formData.append("trust_score", String(payload.trustScore));
+    }
+    if (payload.cashFlowDirection) {
+      formData.append("cash_flow_direction", payload.cashFlowDirection);
     }
     formData.append("debug_fill", String(Boolean(payload.debugFill)));
     return request<InvoiceUploadResponse>("/upload-invoice", {
@@ -119,5 +123,29 @@ export const api = {
     request<EmailDraft>("/generate-email", {
       method: "POST",
       body: JSON.stringify({ bill_id: billId, tone: "empathetic" })
-    }, token)
+    }, token),
+  createManualTransaction: (
+    token: string,
+    payload: {
+      direction: "money_in" | "money_out";
+      counterpartyName: string;
+      amount: number;
+      transactionDate: string;
+      description?: string;
+    }
+  ) =>
+    request<ManualTransactionResult>(
+      "/financial-transactions/manual",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          direction: payload.direction,
+          counterparty_name: payload.counterpartyName,
+          amount: payload.amount,
+          transaction_date: payload.transactionDate,
+          description: payload.description
+        })
+      },
+      token
+    )
 };

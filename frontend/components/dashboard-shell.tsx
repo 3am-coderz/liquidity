@@ -151,9 +151,18 @@ export function DashboardShell() {
     if (!token) return;
     setLoading(true);
     try {
-      await api.connectBank(token);
+      const result = await api.connectBank(token);
+      if (result.approval_url) {
+        setStatus("Setu consent started. Redirecting you to approve bank access.");
+        window.location.href = result.approval_url;
+        return;
+      }
       await refreshDashboard(token);
-      setStatus("Plaid mock sync refreshed Sarah's operating cash.");
+      setStatus(
+        result.current_balance != null
+          ? `Setu ${result.source === "setu-mock" ? "sandbox" : "bank"} sync refreshed the balance to ${formatCurrency(result.current_balance)}.`
+          : "Setu bank sync started."
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Bank sync failed.");
     } finally {
@@ -717,12 +726,24 @@ export function DashboardShell() {
               <div className="mt-4 space-y-4">
                 <div className="rounded-3xl bg-black/15 p-5">
                   <p className="text-sm text-[var(--muted)]">
-                    {uploadedInvoice.ocr_engine.toUpperCase()} parsed {uploadedInvoice.source_file_name ?? uploadedInvoice.payable.vendor_name}
+                    {uploadedInvoice.ocr_engine.toUpperCase()} parsed{" "}
+                    {uploadedInvoice.source_file_name ?? uploadedInvoice.payable?.vendor_name ?? "the uploaded file"}
                   </p>
-                  <p className="mt-3 text-lg font-semibold">{uploadedInvoice.payable.vendor_name}</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">
-                    {formatCurrency(uploadedInvoice.payable.amount)} due {uploadedInvoice.payable.due_date}
-                  </p>
+                  {uploadedInvoice.payable ? (
+                    <>
+                      <p className="mt-3 text-lg font-semibold">{uploadedInvoice.payable.vendor_name}</p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">
+                        {formatCurrency(uploadedInvoice.payable.amount)} due {uploadedInvoice.payable.due_date}
+                      </p>
+                    </>
+                  ) : uploadedInvoice.manual_transaction ? (
+                    <>
+                      <p className="mt-3 text-lg font-semibold">Money in captured from OCR</p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">
+                        {formatCurrency(uploadedInvoice.manual_transaction.amount)} recorded. Balance now {formatCurrency(uploadedInvoice.manual_transaction.balance)}.
+                      </p>
+                    </>
+                  ) : null}
                 </div>
                 {uploadedInvoice.parsed_invoice ? (
                   <div className="rounded-3xl border border-white/10 p-4 text-sm text-[var(--muted)]">

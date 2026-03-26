@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "./api";
-import type { AuthResponse, InvoiceUploadResponse } from "./types";
+import type { AuthResponse, InvoiceUploadResponse, ManualTransactionResult } from "./types";
 
 const inrFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -13,32 +13,42 @@ const inrFormatter = new Intl.NumberFormat("en-IN", {
 });
 
 const categories = ["Operations", "Inventory", "Utilities", "Payroll", "Legal", "Rent", "Tax"] as const;
+const flowOptions = [
+  { value: "money_out", label: "Money out" },
+  { value: "money_in", label: "Money in" }
+] as const;
 
 export function UploadDataShell() {
+  const [isHydrated, setIsHydrated] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [ocrFlow, setOcrFlow] = useState<(typeof flowOptions)[number]["value"]>("money_out");
   const [vendorName, setVendorName] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [category, setCategory] = useState<(typeof categories)[number]>("Operations");
   const [fileTrustScore, setFileTrustScore] = useState("");
   const [manualTrustScore, setManualTrustScore] = useState("");
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("Upload an invoice image or enter a payable manually.");
   const [result, setResult] = useState<InvoiceUploadResponse | null>(null);
+  const [transactionResult, setTransactionResult] = useState<ManualTransactionResult | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [auth, setAuth] = useState<AuthResponse | null>(null);
 
-  const token = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem("lle-token");
-  }, []);
-
-  const auth = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = window.localStorage.getItem("lle-auth");
-    if (!raw) return null;
+  useEffect(() => {
+    setIsHydrated(true);
+    const storedToken = window.localStorage.getItem("lle-token");
+    const rawAuth = window.localStorage.getItem("lle-auth");
+    setToken(storedToken);
+    if (!rawAuth) {
+      setAuth(null);
+      return;
+    }
     try {
-      return JSON.parse(raw) as AuthResponse;
+      setAuth(JSON.parse(rawAuth) as AuthResponse);
     } catch {
-      return null;
+      setAuth(null);
     }
   }, []);
 
@@ -51,9 +61,18 @@ export function UploadDataShell() {
     }
     setLoading(true);
     try {
-      const response = await api.uploadInvoice(token, { file: selectedFile, trustScore: parsedTrustScore });
-      setResult(response);
-      setStatus(`OCR parsed ${response.source_file_name ?? selectedFile.name} and created a payable.`);
+      const response = await api.uploadInvoice(token, {
+        file: selectedFile,
+        trustScore: ocrFlow === "money_out" ? parsedTrustScore : undefined,
+        cashFlowDirection: ocrFlow
+      });
+      setResult(response.payable ? response : null);
+      setTransactionResult(response.manual_transaction ?? null);
+      setStatus(
+        ocrFlow === "money_in"
+          ? `OCR parsed ${response.source_file_name ?? selectedFile.name} and created a money-in entry.`
+          : `OCR parsed ${response.source_file_name ?? selectedFile.name} and created a payable.`
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "File upload failed.");
     } finally {
@@ -89,20 +108,37 @@ export function UploadDataShell() {
         amount: parsedAmount,
         dueDate,
         category,
-        trustScore: parsedTrustScore
+        trustScore: parsedTrustScore,
+        cashFlowDirection: "money_out"
       });
       setResult(response);
-      setStatus(`Manual payable created for ${response.payable.vendor_name}.`);
+      setTransactionResult(null);
+      setStatus(`Manual payable created for ${response.payable?.vendor_name ?? vendorName.trim()}.`);
       setVendorName("");
       setAmount("");
       setDueDate("");
       setCategory("Operations");
       setManualTrustScore("");
+      setDescription("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Manual entry failed.");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!isHydrated) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-4xl items-center px-6 py-10">
+        <section className="glass w-full rounded-[2rem] p-8">
+          <p className="text-sm uppercase tracking-[0.2em] text-[var(--muted)]">Data Upload</p>
+          <h1 className="mt-3 text-3xl font-semibold">Loading upload workspace</h1>
+          <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+            Preparing your signed-in upload tools.
+          </p>
+        </section>
+      </main>
+    );
   }
 
   if (!token || !auth) {
@@ -143,27 +179,45 @@ export function UploadDataShell() {
           <h2 className="mt-2 text-2xl font-semibold">Upload invoice file</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
             Best for invoice photos, screenshots, and scans where you want the app to extract vendor, amount, due date, and category.
-            The trust score starts at the engine default and you can override it before saving.
+            Choose whether the OCR document represents money coming in or money going out.
           </p>
+          <div className="mt-6 grid gap-2 sm:grid-cols-2">
+            {flowOptions.map((option) => (
+              <button
+                key={option.value}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  ocrFlow === option.value
+                    ? "border-amber-300/60 bg-amber-300/10 text-[var(--text)]"
+                    : "border-white/10 bg-black/10 text-[var(--muted)] hover:border-white/20"
+                }`}
+                onClick={() => setOcrFlow(option.value)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           <input
             accept="image/png,image/jpeg,image/jpg,image/webp,image/tiff,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp"
-            className="mt-6 block w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-[var(--text)]"
+            className="mt-4 block w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-[var(--text)]"
             onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
             type="file"
           />
-          <label className="mt-4 block text-sm text-[var(--muted)]">
-            <span className="mb-2 block">Trust score (0 to 1)</span>
-            <input
-              className="block w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-[var(--text)]"
-              max="1"
-              min="0"
-              onChange={(event) => setFileTrustScore(event.target.value)}
-              placeholder="Use default"
-              step="0.01"
-              type="number"
-              value={fileTrustScore}
-            />
-          </label>
+          {ocrFlow === "money_out" ? (
+            <label className="mt-4 block text-sm text-[var(--muted)]">
+              <span className="mb-2 block">Trust score (0 to 1)</span>
+              <input
+                className="block w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-sm text-[var(--text)]"
+                max="1"
+                min="0"
+                onChange={(event) => setFileTrustScore(event.target.value)}
+                placeholder="Use default"
+                step="0.01"
+                type="number"
+                value={fileTrustScore}
+              />
+            </label>
+          ) : null}
           <button
             className="mt-4 rounded-2xl bg-amber-300/90 px-4 py-3 font-medium text-slate-950 transition hover:opacity-90 disabled:opacity-60"
             disabled={loading || !selectedFile}
@@ -196,6 +250,12 @@ export function UploadDataShell() {
               step="0.01"
               type="number"
               value={amount}
+            />
+            <input
+              className="w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-[var(--text)]"
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Notes / description (optional)"
+              value={description}
             />
             <input
               className="w-full rounded-2xl border border-white/10 bg-black/10 px-4 py-3 text-[var(--text)]"
@@ -240,7 +300,7 @@ export function UploadDataShell() {
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--muted)]">Status</p>
         <p className="mt-3 text-sm leading-6 text-[var(--text)]/85">{status}</p>
 
-        {result ? (
+        {result?.payable ? (
           <div className="mt-5 rounded-3xl border border-white/10 bg-black/10 p-5">
             <p className="text-sm text-[var(--muted)]">Latest payable</p>
             <p className="mt-2 text-xl font-semibold">{result.payable.vendor_name}</p>
@@ -253,6 +313,17 @@ export function UploadDataShell() {
                 OCR priority: {result.parsed_invoice.priority_label ?? "Unknown"}.
               </p>
             ) : null}
+          </div>
+        ) : null}
+        {transactionResult ? (
+          <div className="mt-5 rounded-3xl border border-white/10 bg-black/10 p-5">
+            <p className="text-sm text-[var(--muted)]">Latest transaction</p>
+            <p className="mt-2 text-xl font-semibold">
+              {transactionResult.direction === "money_in" ? "Money in" : "Money out"} entry
+            </p>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              {inrFormatter.format(transactionResult.amount)} recorded. Balance is now {inrFormatter.format(transactionResult.balance)}.
+            </p>
           </div>
         ) : null}
       </section>

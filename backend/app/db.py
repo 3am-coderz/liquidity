@@ -32,6 +32,11 @@ def run_startup_migrations() -> None:
                 continue
             connection.execute(text(f"ALTER TABLE payables ADD COLUMN {column_name} {column_type}"))
 
+        if "bank_transactions" in inspector.get_table_names():
+            existing_bank_columns = {column["name"] for column in inspector.get_columns("bank_transactions")}
+            if "matched_pending_payment_id" not in existing_bank_columns:
+                connection.execute(text("ALTER TABLE bank_transactions ADD COLUMN matched_pending_payment_id INTEGER"))
+
 
 def get_db():
     db = SessionLocal()

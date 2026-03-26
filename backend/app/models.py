@@ -32,6 +32,11 @@ class User(Base):
     accounts: Mapped[list["Account"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     payables: Mapped[list["Payable"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     decisions: Mapped[list["Decision"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    setu_consents: Mapped[list["SetuConsent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    setu_data_sessions: Mapped[list["SetuDataSession"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    bank_transactions: Mapped[list["BankTransaction"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    financial_summaries: Mapped[list["FinancialSummary"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    pending_payment_events: Mapped[list["PendingPaymentEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Company(Base):
@@ -101,3 +106,91 @@ class Decision(Base):
     cse_category_used: Mapped[RiskCategory] = mapped_column(SqlEnum(RiskCategory))
 
     user: Mapped["User"] = relationship(back_populates="decisions")
+
+
+class SetuConsent(Base):
+    __tablename__ = "setu_consents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    consent_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="PENDING")
+    approval_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    redirect_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    consent_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="setu_consents")
+
+
+class SetuDataSession(Base):
+    __tablename__ = "setu_data_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    consent_id: Mapped[str] = mapped_column(String(255), index=True)
+    session_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="PENDING")
+    session_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_fi_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="setu_data_sessions")
+
+
+class BankTransaction(Base):
+    __tablename__ = "bank_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    session_id: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
+    transaction_id: Mapped[str] = mapped_column(String(255), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    transaction_type: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    posted_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    balance_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    matched_pending_payment_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="bank_transactions")
+
+
+class FinancialSummary(Base):
+    __tablename__ = "financial_summaries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    current_balance: Mapped[float] = mapped_column(Float, default=0)
+    monthly_income: Mapped[float] = mapped_column(Float, default=0)
+    monthly_expense: Mapped[float] = mapped_column(Float, default=0)
+    burn_rate: Mapped[float] = mapped_column(Float, default=0)
+    daily_expense: Mapped[float] = mapped_column(Float, default=0)
+    runway_days: Mapped[float] = mapped_column(Float, default=0)
+    cash_reserve_ratio: Mapped[float] = mapped_column(Float, default=0)
+    emi_payments: Mapped[float] = mapped_column(Float, default=0)
+    source: Mapped[str] = mapped_column(String(50), default="mock")
+    last_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="financial_summaries")
+
+
+class PendingPaymentEvent(Base):
+    __tablename__ = "pending_payment_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    payable_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    vendor_name: Mapped[str] = mapped_column(String(255))
+    amount: Mapped[float] = mapped_column(Float)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="PENDING")
+    matched_transaction_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="pending_payment_events")

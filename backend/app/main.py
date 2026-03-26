@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .auth import create_access_token, get_current_user, hash_password, verify_password
 from .config import settings
 from .db import Base, engine, get_db, run_startup_migrations
-from .models import Account, Company, Decision, Payable, ThemePreference, User
+from .models import Account, BankTransaction, Company, Decision, FinancialSummary, Payable, PendingPaymentEvent, SetuConsent, SetuDataSession, ThemePreference, User
 from .schemas import (
     AuthResponse,
     ClassifyCompanyRequest,
@@ -26,6 +26,9 @@ from .schemas import (
     PayableOut,
     ResetUserDataRequest,
     ResetUserDataResponse,
+    ManualTransactionCreateRequest,
+    ManualTransactionResponse,
+    SetuConsentInitiateRequest,
     Token,
     TrustScoreUpdateRequest,
     UserCreate,
@@ -33,9 +36,18 @@ from .schemas import (
     UserOut,
 )
 from .services.cse import classify_company
+from .services.financial_summary_service import (
+    bootstrap_financial_summary_from_legacy,
+    create_manual_transaction,
+    get_reconciled_balance,
+    router as financial_summary_router,
+)
 from .services.ocr import extract_invoice_data
 from .services.priorities import infer_priority, priority_weights
 from .services.optimizer import ScoredBill, solve_payment_strategy
+from .services.setu_consent_service import initiate_setu_consent, router as setu_consent_router
+from .services.setu_data_service import create_fi_data_session, fetch_and_store_fi_data
+from .services.setu_webhook_service import router as setu_webhook_router
 
 
 app = FastAPI(title=settings.app_name)
@@ -47,6 +59,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(financial_summary_router)
+app.include_router(setu_consent_router)
+app.include_router(setu_webhook_router)
 
 
 def _serialize_company(company: Company) -> CompanyMetricsResponse:
@@ -140,6 +155,12 @@ def _decision_out(decision: Decision) -> DecisionOut:
 
 
 def _refresh_company(company: Company, db: Session) -> Company:
+    summary = db.query(FinancialSummary).filter(FinancialSummary.user_id == company.user_id).first()
+    if summary:
+        company.cash_balance = get_reconciled_balance(db, company.user_id, summary.current_balance)
+        company.monthly_income = summary.monthly_income
+        company.monthly_expenses = summary.monthly_expense
+        company.cash_flow = round(summary.monthly_income - summary.monthly_expense, 2)
     payables = db.query(Payable).filter(Payable.user_id == company.user_id).all()
     company.upcoming_bills_total = round(sum(item.amount for item in payables), 2)
     metrics = classify_company(
@@ -261,9 +282,14 @@ def reset_user_data(
     db: Session = Depends(get_db),
 ) -> ResetUserDataResponse:
     db.query(Decision).filter(Decision.user_id == current_user.id).delete()
+    db.query(PendingPaymentEvent).filter(PendingPaymentEvent.user_id == current_user.id).delete()
+    db.query(BankTransaction).filter(BankTransaction.user_id == current_user.id).delete()
+    db.query(SetuDataSession).filter(SetuDataSession.user_id == current_user.id).delete()
+    db.query(SetuConsent).filter(SetuConsent.user_id == current_user.id).delete()
     db.query(Payable).filter(Payable.user_id == current_user.id).delete()
     db.query(Account).filter(Account.user_id == current_user.id).delete()
     db.query(Company).filter(Company.user_id == current_user.id).delete()
+    db.query(FinancialSummary).filter(FinancialSummary.user_id == current_user.id).delete()
     db.add(Account(user_id=current_user.id, current_balance=payload.opening_cash_balance, bank_name="Primary Account"))
     metrics = classify_company(payload.opening_cash_balance, 0, 0, 0)
     db.add(
@@ -323,6 +349,7 @@ def upload_invoice(
     due_date: str | None = Form(default=None),
     category: str | None = Form(default=None),
     trust_score: float | None = Form(default=None),
+    cash_flow_direction: str = Form(default="money_out"),
     debug_fill: bool = Form(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -365,12 +392,44 @@ def upload_invoice(
             confidence_notes=extraction.confidence_notes,
         )
 
+    resolved_direction = cash_flow_direction if cash_flow_direction in {"money_in", "money_out"} else "money_out"
+
     priority_label, priority_reason = infer_priority(
         resolved_category or "Operations",
         resolved_due_date or datetime.utcnow().date(),
         resolved_amount or (3200 if debug_fill else 4500),
         extracted_text,
     )
+
+    if resolved_direction == "money_in":
+        transaction, summary = create_manual_transaction(
+            db,
+            current_user.id,
+            ManualTransactionCreateRequest(
+                direction="money_in",
+                counterparty_name=resolved_vendor_name or ("Customer Receipt" if debug_fill else "OCR Receipt"),
+                amount=resolved_amount or (3200 if debug_fill else 4500),
+                transaction_date=resolved_due_date or datetime.utcnow().date(),
+                description=f"OCR upload from {file.filename}" if file is not None else "OCR upload",
+            ),
+            minimum_cash_floor=MIN_CASH_FLOOR,
+        )
+        return InvoiceUploadResponse(
+            payable=None,
+            manual_transaction=ManualTransactionResponse(
+                transaction_id=transaction.transaction_id,
+                direction="money_in",
+                amount=transaction.amount,
+                balance=get_reconciled_balance(db, current_user.id, summary.current_balance),
+                monthly_income=summary.monthly_income,
+                monthly_expense=summary.monthly_expense,
+            ),
+            extracted_text=extracted_text,
+            parsed_invoice=parsed_invoice,
+            source_file_name=file.filename if file is not None else None,
+            ocr_engine="tesseract" if file is not None else "debug-fill",
+        )
+
     default_trust_score, penalty_risk, criticality, revenue_impact, implied_critical = priority_weights(priority_label)
     resolved_trust_score = default_trust_score if trust_score is None else min(max(trust_score, 0.0), 1.0)
     vendor_aggression = _infer_vendor_aggression(resolved_category or "Operations", priority_label, extracted_text)
@@ -405,6 +464,7 @@ def upload_invoice(
 
     return InvoiceUploadResponse(
         payable=_serialize_payable(payable),
+        manual_transaction=None,
         extracted_text=extracted_text,
         parsed_invoice=parsed_invoice,
         source_file_name=file.filename if file is not None else None,
@@ -461,11 +521,42 @@ def connect_bank(current_user: User = Depends(get_current_user), db: Session = D
     if not company or not account:
         raise HTTPException(status_code=404, detail="Financial profile not found")
 
-    company.cash_balance = account.current_balance
-    db.add_all([account, company])
-    db.commit()
-    _refresh_company(company, db)
-    return ConnectBankResponse(bank_name=account.bank_name, current_balance=account.current_balance, synced_at=datetime.utcnow())
+    consent = initiate_setu_consent(
+        db,
+        current_user,
+        payload=SetuConsentInitiateRequest(
+            mobile_number="9999999999",
+            purpose="Liquidity engine bank sync",
+            redirect_url=settings.setu_redirect_url,
+        ),
+    )
+
+    if consent.consent_id.startswith("mock-consent-"):
+        consent.status = "APPROVED"
+        db.add(consent)
+        db.commit()
+        session = create_fi_data_session(db, consent)
+        summary = fetch_and_store_fi_data(db, session)
+        company = _refresh_company(company, db)
+        return ConnectBankResponse(
+            bank_name="Setu Sandbox",
+            current_balance=company.cash_balance,
+            synced_at=datetime.utcnow(),
+            consent_id=consent.consent_id,
+            approval_url=None,
+            status="SYNCED",
+            source=summary.source,
+        )
+
+    return ConnectBankResponse(
+        bank_name="Setu",
+        current_balance=None,
+        synced_at=None,
+        consent_id=consent.consent_id,
+        approval_url=consent.approval_url,
+        status=consent.status,
+        source="setu",
+    )
 
 
 @app.post("/run-optimizer", response_model=OptimizerDecisionResponse)
@@ -477,19 +568,26 @@ def run_optimizer(current_user: User = Depends(get_current_user), db: Session = 
     if not payables:
         raise HTTPException(status_code=400, detail="Upload at least one invoice before running the engine.")
 
+    summary = bootstrap_financial_summary_from_legacy(db, current_user.id, MIN_CASH_FLOOR)
+    reconciled_balance = get_reconciled_balance(db, current_user.id, summary.current_balance)
+    company.cash_balance = reconciled_balance
+    company.monthly_income = summary.monthly_income
+    company.monthly_expenses = summary.monthly_expense
+    db.add(company)
+    db.commit()
     company = _refresh_company(company, db)
-    available_cash = max(company.cash_balance - MIN_CASH_FLOOR, 0)
+    available_cash = max(reconciled_balance - MIN_CASH_FLOOR, 0)
     if available_cash <= 0:
         raise HTTPException(
             status_code=400,
             detail=(
-                f"No spendable cash is available. Current balance is Rs {company.cash_balance:.0f} "
+                f"No spendable cash is available. Current balance is Rs {reconciled_balance:.0f} "
                 f"and the engine must preserve a cash floor of Rs {MIN_CASH_FLOOR}. "
                 "Use Delete my data to reset your opening cash balance or sync a funded account first."
             ),
         )
 
-    result = solve_payment_strategy(company.risk_category, payables, company.cash_balance, company.monthly_expenses)
+    result = solve_payment_strategy(company.risk_category, payables, reconciled_balance, summary.monthly_expense)
     if not result.selected_bills:
         raise HTTPException(
             status_code=400,
@@ -540,6 +638,8 @@ def confirm_payments(
     account = db.query(Account).filter(Account.user_id == current_user.id).first()
     if not company or not account:
         raise HTTPException(status_code=404, detail="Financial profile not found")
+    summary = bootstrap_financial_summary_from_legacy(db, current_user.id, MIN_CASH_FLOOR)
+    reconciled_balance = get_reconciled_balance(db, current_user.id, summary.current_balance)
 
     payables = (
         db.query(Payable)
@@ -550,9 +650,10 @@ def confirm_payments(
         raise HTTPException(status_code=404, detail="No matching bills found to confirm payment.")
 
     total_paid = round(sum(item.amount for item in payables), 2)
-    if total_paid > company.cash_balance:
+    if total_paid > reconciled_balance:
         raise HTTPException(status_code=400, detail="Not enough cash balance to confirm these payments.")
-    if company.cash_balance - total_paid < MIN_CASH_FLOOR:
+    remaining_balance = round(reconciled_balance - total_paid, 2)
+    if remaining_balance < MIN_CASH_FLOOR:
         raise HTTPException(
             status_code=400,
             detail=f"You must keep at least Rs {MIN_CASH_FLOOR} in the account after confirming payments.",
@@ -560,10 +661,19 @@ def confirm_payments(
 
     paid_bill_ids = [item.id for item in payables]
     for item in payables:
+        db.add(
+            PendingPaymentEvent(
+                user_id=current_user.id,
+                payable_id=item.id,
+                vendor_name=item.vendor_name,
+                amount=item.amount,
+                description=f"Confirmed payment for {item.vendor_name}",
+            )
+        )
         db.delete(item)
 
-    company.cash_balance = round(company.cash_balance - total_paid, 2)
-    account.current_balance = company.cash_balance
+    company.cash_balance = remaining_balance
+    account.current_balance = remaining_balance
     db.add_all([company, account])
     db.commit()
     company = _refresh_company(company, db)
@@ -571,7 +681,7 @@ def confirm_payments(
     return ConfirmPaymentsResponse(
         paid_bill_ids=paid_bill_ids,
         total_paid=total_paid,
-        remaining_cash_balance=company.cash_balance,
+        remaining_cash_balance=remaining_balance,
         remaining_upcoming_bills_total=company.upcoming_bills_total,
         message="Selected bills have been marked as paid and removed from upcoming payables.",
     )

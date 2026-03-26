@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     demo_user_password: str = "Demo123!"
     frontend_origin: str = "http://localhost:3000"
     tesseract_cmd: str | None = None
+    setu_base_url: str = "https://aa-sandbox.setu.co"
+    setu_client_id: str | None = None
+    setu_client_secret: str | None = None
+    setu_product_instance_id: str | None = None
+    setu_redirect_url: str = "http://localhost:3000/setu/consent/callback"
+    setu_mock_enabled: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -56,11 +56,21 @@ export type OCRParseSummary = {
 };
 
 export type InvoiceUploadResponse = {
-  payable: Payable;
+  payable: Payable | null;
+  manual_transaction?: ManualTransactionResult | null;
   extracted_text: string | null;
   parsed_invoice: OCRParseSummary | null;
   source_file_name: string | null;
   ocr_engine: string;
+};
+
+export type ManualTransactionResult = {
+  transaction_id: string;
+  direction: "money_in" | "money_out";
+  amount: number;
+  balance: number;
+  monthly_income: number;
+  monthly_expense: number;
 };
 
 export type Decision = {
@@ -78,6 +88,16 @@ export type DashboardState = {
   recent_decisions: Decision[];
   health_badge_color: string;
   suggested_action: string;
+};
+
+export type ConnectBankResult = {
+  bank_name: string;
+  current_balance: number | null;
+  synced_at: string | null;
+  consent_id: string | null;
+  approval_url: string | null;
+  status: string;
+  source: string;
 };
 
 export type OptimizerResult = {

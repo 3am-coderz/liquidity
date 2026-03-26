@@ -49,6 +49,56 @@ class CompanyMetricsResponse(BaseModel):
     risk_category: RiskCategory
 
 
+class SetuConsentInitiateRequest(BaseModel):
+    mobile_number: str = Field(min_length=10, max_length=20)
+    vua: str | None = None
+    purpose: str = "Liquidity analysis and solvency decisioning"
+    redirect_url: str | None = None
+    data_from: date = Field(default_factory=lambda: date.today().replace(day=1))
+    data_to: date = Field(default_factory=date.today)
+
+
+class SetuWebhookPayload(BaseModel):
+    event_type: str | None = None
+    status: str | None = None
+    consent_id: str | None = None
+    session_id: str | None = None
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class SetuWebhookResponse(BaseModel):
+    ok: bool
+    message: str
+    consent_id: str | None = None
+    session_id: str | None = None
+
+
+class FinancialSummaryResponse(BaseModel):
+    balance: float
+    monthly_income: float
+    monthly_expense: float
+    burn_rate: float
+    runway_days: float
+    cash_reserve_ratio: float
+
+
+class ManualTransactionCreateRequest(BaseModel):
+    direction: Literal["money_in", "money_out"]
+    counterparty_name: str = Field(min_length=2, max_length=255)
+    amount: float = Field(gt=0)
+    transaction_date: date
+    description: str | None = None
+
+
+class ManualTransactionResponse(BaseModel):
+    transaction_id: str
+    direction: Literal["money_in", "money_out"]
+    amount: float
+    balance: float
+    monthly_income: float
+    monthly_expense: float
+
+
 class ClassifyCompanyRequest(BaseModel):
     cash_balance: float
     monthly_income: float
@@ -129,7 +179,8 @@ class InvoiceUploadRequest(BaseModel):
 
 
 class InvoiceUploadResponse(BaseModel):
-    payable: PayableOut
+    payable: PayableOut | None = None
+    manual_transaction: ManualTransactionResponse | None = None
     extracted_text: str | None = None
     parsed_invoice: OCRParseSummary | None = None
     source_file_name: str | None = None
@@ -142,8 +193,12 @@ class TrustScoreUpdateRequest(BaseModel):
 
 class ConnectBankResponse(BaseModel):
     bank_name: str
-    current_balance: float
-    synced_at: datetime
+    current_balance: float | None = None
+    synced_at: datetime | None = None
+    consent_id: str | None = None
+    approval_url: str | None = None
+    status: str
+    source: str
 
 
 class ResetUserDataResponse(BaseModel):
