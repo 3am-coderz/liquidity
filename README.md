@@ -1,6 +1,6 @@
 # 💧 Liquidity Logic Engine
 
-### AI-Powered Cashflow Decision Engine for Small Businesses
+### Solvency & Cashflow Decision Engine for Small Businesses
 
 > *"Don't just track your cash. Decide with it."*
 
@@ -12,49 +12,55 @@
 
 ## 📌 Overview
 
-Liquidity Logic Engine is a **cashflow decision system** designed for
-small businesses that struggle with liquidity management.\
-Instead of just tracking income and expenses, the system **decides which
-bills should be paid now and which can be delayed safely**.
+Liquidity Logic Engine is a **solvency-aware cashflow decision system**
+that helps businesses decide:
 
-It combines: - OCR invoice processing - Bank transaction syncing - Cash
-reconciliation - A solvency decision engine - A financial dashboard
+-   Which bills to pay now
+-   Which bills to delay safely
+-   How to survive cash shortages
+-   How to maximize financial runway
+
+This system combines: - OCR invoice processing - Bank transaction
+syncing - Cash reconciliation - Solvency scoring - Knapsack
+optimization - Financial dashboard
+
+> **Liquidity Logic Engine is not a simple optimizer --- it is a
+> solvency-aware constrained optimization system designed to maximize
+> business survival runway, not just minimize costs.**
 
 ------------------------------------------------------------------------
 
 ## ❗ The Problem
 
-Small businesses often fail not because they are unprofitable, but
-because they **run out of cash at the wrong time**.
+Small businesses don't fail because they are unprofitable.\
+They fail because they **run out of cash at the wrong time**.
 
   Challenge           Result
-  ------------------- --------------------------
-  Too many bills      Confusion on what to pay
-  Limited cash        Poor prioritization
-  Vendor pressure     Trust issues
-  Legal penalties     Late payments
-  No decision tools   Financial stress
+  ------------------- --------------------
+  Too many bills      Confusion
+  Limited cash        Poor decisions
+  Vendor pressure     Trust loss
+  Legal penalties     Fines
+  No prioritization   Cash mismanagement
 
-Most software shows **what you spent**.\
-Liquidity Logic Engine shows **what you should do next**.
+Most tools track money.\
+**This system decides what to do when money is not enough.**
 
 ------------------------------------------------------------------------
 
 ## 💡 The Solution
 
-Liquidity Logic Engine acts like a **financial decision assistant**.
-
   Module            Function
-  ----------------- --------------------------------
-  OCR               Reads invoices and receipts
-  Bank Sync         Fetches bank transactions
-  Reconciliation    Calculates real available cash
+  ----------------- ---------------------------
+  OCR               Reads invoices
+  Bank Sync         Fetches transactions
+  Reconciliation    Calculates available cash
   Solvency Engine   Decides pay vs delay
   Dashboard         Shows financial health
 
 ------------------------------------------------------------------------
 
-## 🔄 How The System Works
+## 🔄 System Workflow
 
     Upload Invoice / Add Bill
                 ↓
@@ -78,107 +84,141 @@ Liquidity Logic Engine acts like a **financial decision assistant**.
 
 ------------------------------------------------------------------------
 
-## 🧠 Solvency Engine (Core Logic)
+# 🧠 Solvency Engine (Core Innovation)
 
-The Solvency Engine is the **decision-making brain** of the Liquidity
-Logic Engine.\
-It determines which bills should be paid using **Hard Constraints + Soft
-Constraints + Knapsack Optimization**.
+The Solvency Engine decides payments using:
 
-------------------------------------------------------------------------
-
-### 1. Hard vs Soft Constraints
-
-  -----------------------------------------------------------------------
-  Constraint Type                      Examples              Rule
-  ------------------------------------ --------------------- ------------
-  Hard Constraints                     Salaries, Rent,       Must be paid
-                                       Taxes, Loan EMI       
-
-  Soft Constraints                     Vendors,              Can be
-                                       Subscriptions,        delayed
-                                       Utilities             
-
-  Strategic Bills                      Revenue generating    High
-                                       expenses              priority
-
-  Optional Bills                       Low impact expenses   Delay first
-  -----------------------------------------------------------------------
-
-**Rule:** Hard constraints are always satisfied first before
-optimization begins.
+-   Hard Constraints
+-   Soft Constraints
+-   Solvency Score
+-   Knapsack Optimization
+-   Runway-Based Strategy
 
 ------------------------------------------------------------------------
 
-### 2. Score Decider System
+## 1. Constraint Classification
 
-Each bill is given a **Solvency Score** based on multiple business risk
-factors.
+  ----------------------------------------------------------------------------
+  Constraint Type       Description      Examples        Engine Behavior
+  --------------------- ---------------- --------------- ---------------------
+  Hard Existential      Business stops   Inventory,      Must pay
+                        if unpaid        Critical        
+                                         suppliers       
 
-  Factor              Description               Impact
-  ------------------- ------------------------- --------
-  Due Date            Urgency                   High
-  Trust Score         Vendor relationship       Medium
-  Penalty Risk        Late fee/legal risk       High
-  Revenue Impact      Affects business income   High
-  Vendor Aggression   Supplier strictness       Medium
-  Days Overdue        Delay severity            High
+  Hard Legal            Legal action     Salaries,       Must pay
+                        risk             Taxes, Rent     
 
-### Score Formula (Concept)
-
-    Bill Score = 
-    (Revenue Impact × Weight) +
-    (Penalty Risk × Weight) +
-    (Trust Score × Weight) +
-    (Urgency × Weight) +
-    (Vendor Aggression × Weight)
-
-Bills with higher score = higher priority.
+  Soft Optimization     Can delay        Vendors,        Optimize
+                                         Subscriptions   
+  ----------------------------------------------------------------------------
 
 ------------------------------------------------------------------------
 
-### 3. Knapsack Optimization
+## 2. Quasi-Hard Constraints (Rent / Facilities)
 
-After hard constraints are paid, the remaining money is allocated using
-a **Knapsack Optimization Algorithm**.
+  Days Overdue   Constraint Type
+  -------------- ----------------------
+  \< 30 days     Soft (High Priority)
+  30--60 days    Escalating Risk
+  ≥ 60 days      Hard Legal
 
-**Problem Type:**\
-This is similar to the **0/1 Knapsack Problem**:
+This prevents eviction risk while still allowing optimization
+flexibility.
+
+------------------------------------------------------------------------
+
+## 3. Solvency Score System
+
+Each bill gets a **Solvency Score**.
+
+  Factor              Impact
+  ------------------- --------
+  Revenue Impact      High
+  Penalty Risk        High
+  Trust Score         Medium
+  Vendor Aggression   Medium
+  Days Overdue        High
+  Criticality         High
+
+### Concept Formula
+
+    Solvency Score =
+    Revenue Impact +
+    Penalty Risk +
+    Trust Score +
+    Urgency +
+    Vendor Aggression
+
+Higher score = higher priority.
+
+------------------------------------------------------------------------
+
+## 4. Hard Constraint Optimization
+
+Hard constraints are sorted by:
+
+1.  Survival Impact (descending)
+2.  Bill Amount (ascending)
+
+This ensures the system **saves the business first**, not just pays the
+biggest bill.
+
+If hard constraints cannot be paid → system flags:
+
+**Critical Insolvency Risk**
+
+------------------------------------------------------------------------
+
+## 5. Soft Constraint Optimization (Knapsack Problem)
+
+This is modeled as a **0/1 Knapsack Problem**:
 
   Knapsack Term   Our System
   --------------- ----------------
-  Weight          Bill Amount
-  Value           Bill Score
   Capacity        Available Cash
+  Weight          Bill Amount
+  Value           Solvency Score
   Items           Bills
 
-**Goal:** Maximize total score while staying within available cash.
+### Priority Density Formula
 
-So the system: - Selects the combination of bills - That maximizes
-business survival value - Without exceeding available cash
+    Priority Density = Score / Amount
 
-This ensures **optimal use of limited money**.
+The system selects bills that give **maximum survival value per rupee**.
 
 ------------------------------------------------------------------------
 
-### 4. Engine Output
+## 6. Runway-Based Strategy Modes
 
-  Output              Description
-  ------------------- -----------------------------------------
-  Pay List            Bills to pay now
-  Delay List          Bills to delay
-  Strategy            Explanation
-  Shortfall Warning   If cash not enough for hard constraints
+  Runway Days   Mode           Strategy
+  ------------- -------------- ---------------------------
+  \< 7 days     Crisis Mode    Revenue + penalties first
+  7--30 days    Caution Mode   Balanced
+  \> 30 days    Stable Mode    Trust + optimization
+
+------------------------------------------------------------------------
+
+## 7. Engine Decision Flow
+
+    Step 1 — Calculate Available Cash
+    Step 2 — Classify Bills (Hard / Soft)
+    Step 3 — Sort Hard Bills by Survival Impact
+    Step 4 — Pay Hard Bills First
+    Step 5 — If Hard Bills can't be paid → Critical Warning
+    Step 6 — Use Knapsack on Soft Bills
+    Step 7 — Generate Pay List and Delay List
+    Step 8 — Calculate Remaining Runway
+    Step 9 — Generate Strategy Explanation
 
 ------------------------------------------------------------------------
 
 ## 🏦 Bank Reconciliation
 
-  Item                 Amount
-  -------------------- ----------
-  Bank Balance         ₹100,000
-  Confirmed Payments   ₹30,000
-  Available Cash       ₹70,000
+  Item               Amount
+  ------------------ ----------
+  Bank Balance       ₹100,000
+  Pending Payments   ₹30,000
+  Available Cash     ₹70,000
 
 **Formula:**
 
@@ -188,12 +228,11 @@ This ensures **optimal use of limited money**.
 
 ## 📄 OCR System
 
-  Input           Output
-  --------------- -------------
-  Invoice Image   Payable
-  Receipt         Transaction
-  Screenshot      Payable
-  Bill Photo      Payable
+  Input        Output
+  ------------ -------------
+  Invoice      Payable
+  Receipt      Transaction
+  Screenshot   Payable
 
 Supported formats: PNG, JPG, JPEG, WEBP, TIFF, BMP
 
@@ -201,30 +240,59 @@ Supported formats: PNG, JPG, JPEG, WEBP, TIFF, BMP
 
 ## 🏗️ System Architecture
 
-  Layer      Technology
-  ---------- -----------------------
-  Frontend   Next.js
-  Backend    FastAPI
-  OCR        Tesseract
-  Bank API   Setu
-  Engine     Knapsack Optimization
-  Database   SQLite / PostgreSQL
-  Hosting    Vercel / Render
+  Layer          Technology
+  -------------- ---------------------
+  Frontend       Next.js
+  Backend        FastAPI
+  OCR            Tesseract
+  Bank API       Setu
+  Optimization   OR-Tools Knapsack
+  Database       SQLite / PostgreSQL
+  Hosting        Vercel / Render
 
 ------------------------------------------------------------------------
 
 ## 🛠️ Tech Stack
 
   Category       Technology
-  -------------- -------------------
+  -------------- --------------
   Language       Python
   Backend        FastAPI
   Frontend       Next.js
   OCR            Tesseract
-  Optimization   OR-Tools Knapsack
+  Optimization   OR-Tools
   Database       SQLite
   API            Setu
   Styling        Tailwind CSS
+
+------------------------------------------------------------------------
+
+## 📁 Project Structure
+
+    project/
+    ├── backend/
+    ├── frontend/
+    ├── database/
+    ├── docs/
+    ├── README.md
+
+------------------------------------------------------------------------
+
+## ⚙️ Local Setup
+
+### Backend
+
+    cd backend
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    uvicorn app.main:app --reload
+
+### Frontend
+
+    cd frontend
+    npm install
+    npm run dev
 
 ------------------------------------------------------------------------
 
@@ -233,13 +301,14 @@ Supported formats: PNG, JPG, JPEG, WEBP, TIFF, BMP
   Member           Role
   ---------------- ----------
   Dhanush Kathir   Frontend
-  Yuvashankar      Frontend
+  Anish Balaji     Frontend
   Ashraf           Backend
-  Srinath          ML
+  Tejas            ML
 
 ------------------------------------------------------------------------
 
 ## 🏁 Final Note
 
-> When you don't have enough money to pay everything, the system decides
-> the best way to survive.
+> When cash is limited, survival depends on paying the right bill at the
+> right time.\
+> Liquidity Logic Engine makes that decision.
