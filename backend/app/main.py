@@ -34,6 +34,7 @@ from .schemas import (
     UserCreate,
     UserLogin,
     UserOut,
+    PaidBillOut,
 )
 from .services.cse import classify_company
 from .services.financial_summary_service import (
@@ -55,6 +56,7 @@ MIN_CASH_FLOOR = 2000
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin, "http://127.0.0.1:3000"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:[0-9]+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,7 +64,6 @@ app.add_middleware(
 app.include_router(financial_summary_router)
 app.include_router(setu_consent_router)
 app.include_router(setu_webhook_router)
-
 
 def _serialize_company(company: Company) -> CompanyMetricsResponse:
     return CompanyMetricsResponse(
@@ -190,6 +191,10 @@ def _ensure_sqlite_schema_compatibility() -> None:
         },
         "accounts": {
             "bank_name": "ALTER TABLE accounts ADD COLUMN bank_name VARCHAR(255) DEFAULT 'Primary Account'",
+        },
+        "pending_payment_events": {
+            "category": "ALTER TABLE pending_payment_events ADD COLUMN category VARCHAR(100) DEFAULT NULL",
+            "reason": "ALTER TABLE pending_payment_events ADD COLUMN reason VARCHAR(500) DEFAULT NULL",
         },
     }
 
@@ -661,6 +666,7 @@ def confirm_payments(
 
     paid_bill_ids = [item.id for item in payables]
     for item in payables:
+        _, priority_reason = infer_priority(item.category, item.due_date, item.amount)
         db.add(
             PendingPaymentEvent(
                 user_id=current_user.id,
@@ -668,6 +674,8 @@ def confirm_payments(
                 vendor_name=item.vendor_name,
                 amount=item.amount,
                 description=f"Confirmed payment for {item.vendor_name}",
+                category=item.category,
+                reason=priority_reason,
             )
         )
         db.delete(item)
@@ -685,6 +693,27 @@ def confirm_payments(
         remaining_upcoming_bills_total=company.upcoming_bills_total,
         message="Selected bills have been marked as paid and removed from upcoming payables.",
     )
+
+
+@app.get("/paid-bills", response_model=list[PaidBillOut])
+def get_paid_bills(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    events = (
+        db.query(PendingPaymentEvent)
+        .filter(PendingPaymentEvent.user_id == current_user.id)
+        .order_by(PendingPaymentEvent.created_at.desc())
+        .all()
+    )
+    return [
+        PaidBillOut(
+            id=ev.id,
+            vendor_name=ev.vendor_name,
+            amount=ev.amount,
+            category=ev.category,
+            reason=ev.reason,
+            date=ev.created_at.strftime("%Y-%m-%d"),
+        )
+        for ev in events
+    ]
 
 
 @app.get("/dashboard-state", response_model=DashboardStateResponse)

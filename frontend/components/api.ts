@@ -1,4 +1,4 @@
-import type { AuthResponse, ConfirmPaymentsResponse, ConnectBankResult, DashboardState, EmailDraft, InvoiceUploadResponse, ManualTransactionResult, OptimizerResult, Payable, User } from "./types";
+import type { AuthResponse, ConfirmPaymentsResponse, ConnectBankResult, DashboardState, EmailDraft, InvoiceUploadResponse, ManualTransactionResult, OptimizerResult, Payable, User, PaidBillOut } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -147,5 +147,6 @@ export const api = {
         })
       },
       token
-    )
+    ),
+  getPaidBills: (token: string) => request<PaidBillOut[]>("/paid-bills", undefined, token)
 };

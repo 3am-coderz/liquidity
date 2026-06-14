@@ -188,6 +188,8 @@ class PendingPaymentEvent(Base):
     vendor_name: Mapped[str] = mapped_column(String(255))
     amount: Mapped[float] = mapped_column(Float)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="PENDING")
     matched_transaction_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

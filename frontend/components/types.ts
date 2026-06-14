@@ -114,6 +114,21 @@ export type OptimizerResult = {
 
 export type ConfirmPaymentsResponse = {
   paid_bill_ids: number[];
+
+export type OptimizerResult = {
+  category: RiskCategory;
+  strategy: string;
+  available_cash: number;
+  cash_floor: number;
+  total_selected_amount: number;
+  projected_runway_days: number;
+  selected_bills: Payable[];
+  delayed_bills: Payable[];
+  explanation: string;
+};
+
+export type ConfirmPaymentsResponse = {
+  paid_bill_ids: number[];
   total_paid: number;
   remaining_cash_balance: number;
   remaining_upcoming_bills_total: number;
@@ -123,4 +138,13 @@ export type ConfirmPaymentsResponse = {
 export type EmailDraft = {
   subject: string;
   body: string;
+};
+
+export type PaidBillOut = {
+  id: number;
+  vendor_name: string;
+  amount: number;
+  category: string | null;
+  reason: string | null;
+  date: string;
 };

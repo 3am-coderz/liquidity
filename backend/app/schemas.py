@@ -214,6 +214,21 @@ class EmailGenerationRequest(BaseModel):
     tone: Literal["empathetic", "firm", "neutral"] = "empathetic"
 
 
+
+
+class ResetUserDataResponse(BaseModel):
+    message: str
+
+
+class ResetUserDataRequest(BaseModel):
+    opening_cash_balance: float = Field(ge=0)
+
+
+class EmailGenerationRequest(BaseModel):
+    bill_id: int
+    tone: Literal["empathetic", "firm", "neutral"] = "empathetic"
+
+
 class EmailGenerationResponse(BaseModel):
     subject: str
     body: str
@@ -226,3 +241,12 @@ class DashboardStateResponse(BaseModel):
     recent_decisions: list[DecisionOut]
     health_badge_color: str
     suggested_action: str
+
+
+class PaidBillOut(BaseModel):
+    id: int
+    vendor_name: str
+    amount: float
+    category: str | None = None
+    reason: str | None = None
+    date: str

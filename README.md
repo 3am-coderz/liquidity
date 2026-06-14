@@ -18,6 +18,7 @@ This project is built as a hackathon-ready product with:
 - Solvency Engine
 - Bank Sync And Reconciliation
 - OCR And Upload Flows
+- Paid Bills History
 - Tech Stack
 - Project Structure
 - Local Setup
@@ -105,6 +106,13 @@ The backend keeps enough structure to support both demo mode and more production
 - trust score can be edited later on the dashboard
 - delayed non-hard bills can lose trust after engine runs where hard constraints consume liquidity
 
+### 7. Paid Bills History
+
+- every confirmed payment is archived with a date, vendor name, amount, category, and priority reason
+- a dedicated `/history` page displays the full log of past payments grouped in a clean timeline table
+- the database automatically migrates to add history fields without data loss
+- history is per-user and returned in reverse-chronological order (newest first)
+
 ## Product Flow
 
 ### Bill Outflow Flow
@@ -116,6 +124,7 @@ The backend keeps enough structure to support both demo mode and more production
 5. Engine recommends pay vs delay.
 6. User confirms selected payments.
 7. Confirmed payments move into pending-payment reconciliation.
+8. Payment is archived in the Paid Bills History with date, vendor, amount, category, and reason.
 
 ### OCR Money-In Flow
 
@@ -427,6 +436,7 @@ This is not a full API reference, but these are the important endpoints.
 
 - `POST /run-optimizer`
 - `POST /confirm-payments`
+- `GET /paid-bills`
 - `POST /generate-email`
 
 ### Bank And Financial Data

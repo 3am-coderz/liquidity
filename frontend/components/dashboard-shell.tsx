@@ -441,8 +441,11 @@ export function DashboardShell() {
   return (
     <main className="mx-auto min-h-screen max-w-7xl px-6 py-8">
       <section className="mb-6 flex flex-col gap-4 rounded-[2rem] glass p-6 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+        <div className="flex items-center gap-4">
           <p className="text-sm uppercase tracking-[0.3em] text-[var(--muted)]">Liquidity Logic Engine</p>
+          <Link href="/history" className="text-sm uppercase tracking-[0.1em] text-[var(--muted)] hover:text-white transition-colors">
+            History
+          </Link>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {category ? (
